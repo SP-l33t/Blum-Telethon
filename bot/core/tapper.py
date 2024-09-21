@@ -54,7 +54,7 @@ class Tapper:
         if not user_agent:
             user_agent = generate_random_user_agent(device_type='android', browser_type='chrome')
             self.config['user_agent'] = user_agent
-            config_utils.update_config_file(self.session_name, self.config, CONFIG_PATH)
+            config_utils.update_session_config_in_file(self.session_name, self.config, CONFIG_PATH)
 
         return user_agent
 
@@ -224,11 +224,9 @@ class Tapper:
 
     async def start_task(self, http_client: aiohttp.ClientSession, task_id):
         try:
-            resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/start',
-                                          ssl=False)
-
+            return await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/start', ssl=False)
         except Exception as error:
-            log_error(self.log_message(f" Start complete error {error}"))
+            log_error(self.log_message(f"Failed to start a task: {error}"))
 
     async def validate_task(self, http_client: aiohttp.ClientSession, task_id, title):
         try:
@@ -561,9 +559,13 @@ class Tapper:
 
                 for task in tasks:
                     if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET":
-                        logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
-                        await self.start_task(http_client=http_client, task_id=task["id"])
-                        await asyncio.sleep(0.5)
+                        task_started = await self.start_task(http_client=http_client, task_id=task["id"])
+                        if task_started.status < 400:
+                            logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
+                        else:
+                            logger.warning(self.log_message(f"Failed to start task - '{task['title']}' Stop trying for now"))
+                            break
+                        await asyncio.sleep(random.uniform(1, 5))
 
                 await asyncio.sleep(5)
 

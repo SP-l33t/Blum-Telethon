@@ -38,47 +38,51 @@ async def get_tg_clients() -> list[TelegramClient]:
     session_names = get_session_names(SESSIONS_PATH)
 
     if not session_names:
-        raise FileNotFoundError("Not found session files")
-
-    if not API_ID or not API_HASH:
-        raise ValueError("API_ID and API_HASH not found in the .env file.")
+        raise FileNotFoundError("Session files not found")
 
     tg_clients = []
     for session_name in session_names:
-        config: dict = accounts_config.get(session_name, {})
-        if config.get('api_id') and config.get('api_hash'):
-            client_params = {
-                "session": os.path.join(SESSIONS_PATH, session_name),
-                "lang_code": "en",
-                "system_lang_code": "en-US"
-            }
-            for key in ("api_id", "api_hash", "device_model", "system_version", "app_version"):
-                if key in config and config[key]:
-                    client_params[key] = config[key]
+        session_config: dict = accounts_config.get(session_name, {})
 
+        client_params = {
+            "session": os.path.join(SESSIONS_PATH, session_name),
+            "lang_code": "en",
+            "system_lang_code": "en-US"
+        }
+        for key in ("api_id", "api_hash", "device_model", "system_version", "app_version"):
+            if key in session_config and session_config[key]:
+                client_params[key] = session_config[key]
+
+        session_proxy = session_config.get('proxy')
+        if not session_proxy and 'proxy' in session_config.keys():
             tg_clients.append(TelegramClient(**client_params))
+            continue
+
         else:
-            unused_proxies = proxy_utils.get_unused_proxies(accounts_config, PROXIES_PATH)
-            if not unused_proxies and settings.USE_PROXY_FROM_FILE:
-                logger.warning(f'No unused proxy found for session: {session_name}. Skipping')
+            working_proxy = await proxy_utils.get_working_proxy(accounts_config, session_proxy)
+            if not working_proxy:
+                logger.warning(f"{session_name} | Didn't find a working unused proxy for session | Skipping")
                 continue
             else:
-                proxy = unused_proxies[0] if unused_proxies else None
+                if 'api_id' in client_params and 'api_hash' in client_params:
+                    tg_clients.append(TelegramClient(**client_params))
+                    session_config['proxy'] = working_proxy
+                    config_utils.update_session_config_in_file(session_name, session_config, CONFIG_PATH)
+                    continue
+                else:
+                    client_params['api_id'] = API_ID
+                    client_params['api_hash'] = API_HASH
+                    tg_clients.append(TelegramClient(**client_params))
+                    session_config['proxy'] = working_proxy if settings.USE_PROXY_FROM_FILE else None
+                    session_config.update(
+                        {
+                            'proxy': working_proxy if settings.USE_PROXY_FROM_FILE else None,
+                            'api_id': API_ID,
+                            'api_hash': API_HASH
+                        })
+                    config_utils.update_session_config_in_file(session_name, session_config, CONFIG_PATH)
+                    continue
 
-            tg_clients.append(TelegramClient(
-                session=os.path.join(SESSIONS_PATH, session_name),
-                api_id=API_ID,
-                api_hash=API_HASH,
-            ))
-            accounts_config.update({
-                session_name:
-                    {
-                        'api_id': API_ID,
-                        'api_hash': API_HASH,
-                        'proxy': proxy
-                    }
-            })
-            config_utils.write_config_file(accounts_config, CONFIG_PATH)
     return tg_clients
 
 
@@ -109,8 +113,9 @@ async def process() -> None:
                 break
 
     if action == 1:
+        if not API_ID or not API_HASH:
+            raise ValueError("API_ID and API_HASH not found in the .env file.")
         await run_tasks()
-
     elif action == 2:
         await register_sessions()
 

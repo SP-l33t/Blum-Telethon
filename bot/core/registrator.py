@@ -66,7 +66,9 @@ async def register_sessions() -> None:
         system_lang_code="en-US",
         **device_params
     )
+    logger.info(f"Using proxy: {proxy}")
     session.set_proxy(proxy)
+
     await session.start()
 
     user_data = await session.get_me()

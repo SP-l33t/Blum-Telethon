@@ -52,8 +52,8 @@ def get_session_config(session_name: str, config_path: str) -> dict:
     return read_config_file(config_path).get(session_name, {})
 
 
-def update_config_file(session_name: str, updated_session_config: dict,
-                       config_path: str):
+def update_session_config_in_file(session_name: str, updated_session_config: dict,
+                                  config_path: str):
     """Updates the content of a session in config file. If the file does not exist, creates it.
 
      Args:

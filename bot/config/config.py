@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     USE_REF: bool = False
     REF_ID: str = ''
 
+    SESSIONS_PER_PROXY: int = 1
     USE_PROXY_FROM_FILE: bool = False
+    USE_PROXY_CHAIN: bool = False
 
     DEVICE_PARAMS: bool = False
 

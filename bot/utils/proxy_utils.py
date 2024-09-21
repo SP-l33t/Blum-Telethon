@@ -1,6 +1,7 @@
 import os
 import aiohttp
 from aiohttp_proxy import ProxyConnector
+from collections import Counter
 from python_socks import ProxyType
 from shutil import copyfile
 from better_proxy import Proxy
@@ -55,19 +56,43 @@ def get_proxies(proxy_path: str) -> list[str]:
 
 
 def get_unused_proxies(accounts_config, proxy_path: str):
-    used_proxies = list({v['proxy'] for v in accounts_config.values()})
+    proxies_count = Counter([v['proxy'] for v in accounts_config.values()])
     all_proxies = get_proxies(proxy_path)
-    return [proxy for proxy in all_proxies if proxy not in used_proxies]
+    return [proxy for proxy in all_proxies if proxies_count.get(proxy, 0) < settings.SESSIONS_PER_PROXY]
 
 
 async def check_proxy(proxy):
     url = 'https://ifconfig.me/ip'
     proxy_conn = ProxyConnector().from_url(proxy)
     try:
-        async with aiohttp.ClientSession(connector=proxy_conn) as session:
+        async with aiohttp.ClientSession(connector=proxy_conn, timeout=aiohttp.ClientTimeout(10)) as session:
             response = await session.get(url)
             if response.status == 200:
+                logger.success(f"Successfully connected to proxy. IP: {await response.text()}")
                 return True
     except Exception as e:
         logger.warning(f"Proxy {proxy} didn't respond")
         return False
+
+
+async def get_proxy_chain(path) -> (str | None, str | None):
+    try:
+        with open(path, 'r') as file:
+            proxy = file.read().strip()
+            return proxy, to_telethon_proxy(Proxy.from_str(proxy))
+    except Exception as e:
+        logger.error(f"Failed to get proxy for proxy chain from '{path}'")
+        return None, None
+
+
+async def get_working_proxy(accounts_config: dict, current_proxy: str | None) -> str | None:
+    if current_proxy and await check_proxy(current_proxy):
+        return current_proxy
+
+    from bot.utils import PROXIES_PATH
+    unused_proxies = get_unused_proxies(accounts_config, PROXIES_PATH)
+    for proxy in unused_proxies:
+        if await check_proxy(proxy):
+            return proxy
+
+    return None
