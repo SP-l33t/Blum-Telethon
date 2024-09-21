@@ -236,7 +236,8 @@ class Tapper:
                 'How to Analyze Crypto?': 'VALUE',
                 'Forks Explained': 'GO GET',
                 'Secure your Crypto!': 'BEST PROJECT EVER',
-                'Navigating Crypto': 'HEYBLUM'
+                'Navigating Crypto': 'HEYBLUM',
+                'What are Telegram Mini Apps?': 'CRYPTOBLUM'
             }
 
             payload = {'keyword': keywords.get(title)}
@@ -281,7 +282,12 @@ class Tapper:
                     if task.get('sectionType') == 'HIGHLIGHTS':
                         tasks_list = task.get('tasks', [])
                         for t in tasks_list:
-                            collected_tasks.append(t)
+                            sub_tasks = t.get('subTasks')
+                            if sub_tasks:
+                                for sub_task in sub_tasks:
+                                    collected_tasks.append(sub_task)
+                            if t.get('type') != 'PARTNER_INTEGRATION':
+                                collected_tasks.append(t)
 
                     if task.get('sectionType') == 'WEEKLY_ROUTINE':
                         tasks_list = task.get('tasks', [])
