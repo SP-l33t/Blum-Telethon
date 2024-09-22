@@ -65,10 +65,12 @@ async def check_proxy(proxy):
     url = 'https://ifconfig.me/ip'
     proxy_conn = ProxyConnector().from_url(proxy)
     try:
-        async with aiohttp.ClientSession(connector=proxy_conn, timeout=aiohttp.ClientTimeout(10)) as session:
+        async with aiohttp.ClientSession(connector=proxy_conn, timeout=aiohttp.ClientTimeout(15)) as session:
             response = await session.get(url)
             if response.status == 200:
                 logger.success(f"Successfully connected to proxy. IP: {await response.text()}")
+                if not proxy_conn.closed:
+                    proxy_conn.close()
                 return True
     except Exception as e:
         logger.warning(f"Proxy {proxy} didn't respond")

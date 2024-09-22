@@ -67,19 +67,20 @@ async def get_tg_clients() -> list[TelegramClient]:
                 if 'api_id' in client_params and 'api_hash' in client_params:
                     tg_clients.append(TelegramClient(**client_params))
                     session_config['proxy'] = working_proxy
+                    accounts_config[session_name] = session_config
                     config_utils.update_session_config_in_file(session_name, session_config, CONFIG_PATH)
                     continue
                 else:
                     client_params['api_id'] = API_ID
                     client_params['api_hash'] = API_HASH
                     tg_clients.append(TelegramClient(**client_params))
-                    session_config['proxy'] = working_proxy if settings.USE_PROXY_FROM_FILE else None
                     session_config.update(
                         {
                             'proxy': working_proxy if settings.USE_PROXY_FROM_FILE else None,
                             'api_id': API_ID,
                             'api_hash': API_HASH
                         })
+                    accounts_config[session_name] = session_config
                     config_utils.update_session_config_in_file(session_name, session_config, CONFIG_PATH)
                     continue
 
