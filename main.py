@@ -3,6 +3,7 @@ from contextlib import suppress
 from bot.core.launcher import process
 from bot.utils import PROXY_CHAIN, logger
 from bot.utils.proxy_utils import get_proxy_chain, check_proxy
+from os import system
 
 
 async def main():
@@ -20,5 +21,6 @@ async def main():
 
 
 if __name__ == '__main__':
+    system('title Blum')
     with suppress(KeyboardInterrupt):
         asyncio.run(main())

@@ -33,11 +33,10 @@ else
 	echo "Skipping .env copying"
 fi
 
-git fetch
-git pull
-
 while true
 do
+    git fetch
+    git pull
     if [ "$firstRun" = true ]; then
         python3 main.py
         firstRun=false

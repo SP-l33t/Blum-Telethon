@@ -8,6 +8,7 @@ from urllib.parse import unquote
 from aiocfscrape import CloudflareScraper
 from aiohttp_proxy import ProxyConnector
 from better_proxy import Proxy
+from time import time
 
 from telethon import TelegramClient
 from telethon.errors import *
@@ -38,6 +39,7 @@ class Tapper:
         self.headers = headers
         self.headers['User-Agent'] = self.check_user_agent()
         self.headers.update(**get_sec_ch_ua(self.headers.get('User-Agent', '')))
+
         self.gateway_url = "https://gateway.blum.codes"
         self.game_url = "https://game-domain.blum.codes"
         self.wallet_url = "https://wallet-domain.blum.codes"
@@ -45,6 +47,8 @@ class Tapper:
         self.tribe_url = "https://tribe-domain.blum.codes"
         self.user_url = "https://user-domain.blum.codes"
         self.earn_domain = "https://earn-domain.blum.codes"
+
+        self._webview_data = None
 
     def log_message(self, message) -> str:
         return f"<light-yellow>{self.session_name}</light-yellow> | {message}"
@@ -69,27 +73,27 @@ class Tapper:
         tg_web_data = None
         with self.lock:
             async with self.tg_client as client:
-                while True:
-                    try:
-                        resolve_result = await client(contacts.ResolveUsernameRequest(username='BlumCryptoBot'))
-                        peer = InputPeerUser(user_id=resolve_result.peer.user_id,
-                                             access_hash=resolve_result.users[0].access_hash)
-                        break
-                    except FloodWaitError as fl:
-                        fls = fl.seconds
+                if not self._webview_data:
+                    while True:
+                        try:
+                            resolve_result = await client(contacts.ResolveUsernameRequest(username='BlumCryptoBot'))
+                            user = resolve_result.users[0]
+                            peer = InputPeerUser(user_id=user.id, access_hash=user.access_hash)
+                            input_user = InputUser(user_id=user.id, access_hash=user.access_hash)
+                            input_bot_app = InputBotAppShortName(bot_id=input_user, short_name="app")
+                            self._webview_data = {'peer': peer, 'app': input_bot_app}
+                            break
+                        except FloodWaitError as fl:
+                            fls = fl.seconds
 
-                        logger.warning(self.log_message(f"FloodWait {fl}"))
-                        logger.info(self.log_message(f"Sleep {fls}s"))
-                        await asyncio.sleep(fls + 3)
+                            logger.warning(self.log_message(f"FloodWait {fl}"))
+                            logger.info(self.log_message(f"Sleep {fls}s"))
+                            await asyncio.sleep(fls + 3)
 
                 self.start_param = settings.REF_ID if random.randint(0, 100) <= 85 else "ref_WyOWiiqWa4"
 
-                input_user = InputUser(user_id=resolve_result.peer.user_id, access_hash=resolve_result.users[0].access_hash)
-                input_bot_app = InputBotAppShortName(bot_id=input_user, short_name="app")
-
                 web_view = await client(messages.RequestAppWebViewRequest(
-                    peer=peer,
-                    app=input_bot_app,
+                    **self._webview_data,
                     platform='android',
                     write_allowed=True,
                     start_param=self.start_param
@@ -128,7 +132,7 @@ class Tapper:
 
                 resp_json = await resp.json()
 
-                if resp_json.get("message") == "rpc error: code = AlreadyExists desc = Username is not available":
+                if "Username is not available" in resp_json.get("message"):
                     while True:
                         name = self.username
                         rand_letters = ''.join(random.choices(string.ascii_lowercase, k=random.randint(3, 8)))
@@ -472,14 +476,15 @@ class Tapper:
 
         return resp_json.get('access'), resp_json.get('refresh')
 
-    async def check_proxy(self, http_client: aiohttp.ClientSession, proxy: str) -> bool:
+    async def check_proxy(self, http_client: aiohttp.ClientSession) -> bool:
+        proxy_conn = http_client._connector
         try:
-            response = await http_client.get(url='https://httpbin.org/ip', timeout=aiohttp.ClientTimeout(5))
-            ip = (await response.json()).get('origin')
-            logger.info(self.log_message(f"Proxy IP: {ip}"))
+            response = await http_client.get(url='https://ifconfig.me/ip', timeout=aiohttp.ClientTimeout(15))
+            logger.info(self.log_message(f"Proxy IP: {await response.text()}"))
             return True
         except Exception as error:
-            log_error(self.log_message(f"Proxy: {proxy} | Error: {error}"))
+            proxy_url = f"{proxy_conn._proxy_type}://{proxy_conn._proxy_host}:{proxy_conn._proxy_port}"
+            log_error(self.log_message(f"Proxy: {proxy_url} | Error: {type(error).__name__}"))
             return False
 
     async def run(self) -> None:
@@ -492,109 +497,113 @@ class Tapper:
         refresh_token = None
         login_need = True
 
-        if self.proxy:
-            proxy_conn = ProxyConnector().from_url(self.proxy)
-            http_client = CloudflareScraper(headers=self.headers, connector=proxy_conn)
-            p_type = proxy_conn._proxy_type
-            p_host = proxy_conn._proxy_host
-            p_port = proxy_conn._proxy_port
-            if not await self.check_proxy(http_client=http_client, proxy=f"{p_type}://{p_host}:{p_port}"):
-                return
-        else:
-            http_client = CloudflareScraper(headers=self.headers)
+        access_token_created_time = 0
+        token_live_time = 3600
+        init_data = None
 
         while True:
-            try:
-                if login_need:
-                    if "Authorization" in http_client.headers:
-                        del http_client.headers["Authorization"]
-
-                    init_data = await self.get_tg_web_data()
-
-                    access_token, refresh_token = await self.login(http_client=http_client, initdata=init_data)
-
-                    http_client.headers["Authorization"] = f"Bearer {access_token}"
-
-                    if self.first_run is not True:
-                        logger.success(self.log_message("Logged in successfully"))
-                        self.first_run = True
-
-                    login_need = False
-
-                timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
-
-                if isinstance(play_passes, int):
-                    logger.info(self.log_message(f'You have {play_passes} play passes'))
-
-                msg = await self.claim_daily_reward(http_client=http_client)
-                if isinstance(msg, bool) and msg:
-                    logger.success(self.log_message(f"Claimed daily reward!"))
-
-                claim_amount, is_available = await self.friend_balance(http_client=http_client)
-                if claim_amount != 0 and is_available:
-                    amount = await self.friend_claim(http_client=http_client)
-                    logger.success(self.log_message(f"Claimed friend ref reward {amount}"))
-
-                if play_passes and play_passes > 0 and settings.PLAY_GAMES:
-                    await self.play_game(http_client=http_client, play_passes=play_passes, refresh_token=refresh_token)
-
-                await self.join_tribe(http_client=http_client)
-                tasks = await self.get_tasks(http_client=http_client)
-
-                for task in tasks:
-                    if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET":
-                        task_started = await self.start_task(http_client=http_client, task_id=task["id"])
-                        if task_started.status < 400:
-                            logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
-                        else:
-                            logger.warning(self.log_message(f"Failed to start task - '{task['title']}' Stop trying for now"))
-                            break
-                        await asyncio.sleep(random.uniform(1, 5))
-
-                await asyncio.sleep(5)
-
-                tasks = await self.get_tasks(http_client=http_client)
-                for task in tasks:
-                    if task.get('status'):
-                        if task['status'] == "READY_FOR_CLAIM" and task['type'] != 'PROGRESS_TASK':
-                            status = await self.claim_task(http_client=http_client, task_id=task["id"])
-                            if status:
-                                logger.success(self.log_message(f"Claimed task - '{task['title']}'"))
-                            await asyncio.sleep(random.uniform(1, 2))
-                        elif task['status'] == "READY_FOR_VERIFY" and task['validationType'] == 'KEYWORD':
-                            status = await self.validate_task(http_client=http_client, task_id=task["id"],
-                                                              title=task['title'])
-
-                            if status:
-                                logger.success(self.log_message(f"Validated task - '{task['title']}'"))
+            proxy_conn = {'connector': ProxyConnector.from_url(self.proxy)} if self.proxy else {}
+            async with CloudflareScraper(headers=self.headers, timeout=aiohttp.ClientTimeout(60), **proxy_conn) as http_client:
+                if not await self.check_proxy(http_client=http_client):
+                    logger.warning(self.log_message('Failed to connect to proxy server. Sleep 5 minutes.'))
+                    await asyncio.sleep(300)
+                    continue
 
                 try:
+                    if time() - access_token_created_time >= token_live_time:
+                        init_data = await self.get_tg_web_data()
+
+                    if not init_data:
+                        raise InvalidSession('Failed to get webview URL')
+
+                    if login_need:
+                        if "Authorization" in http_client.headers:
+                            del http_client.headers["Authorization"]
+
+                        access_token, refresh_token = await self.login(http_client=http_client, initdata=init_data)
+
+                        http_client.headers["Authorization"] = f"Bearer {access_token}"
+
+                        if self.first_run is not True:
+                            logger.success(self.log_message("Logged in successfully"))
+                            self.first_run = True
+
+                        login_need = False
+
                     timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
 
-                    if start_time is None and end_time is None:
-                        await self.start_farming(http_client=http_client)
-                        logger.info(self.log_message(f"<lc>[FARMING]</lc> Start farming!"))
+                    if isinstance(play_passes, int):
+                        logger.info(self.log_message(f'You have {play_passes} play passes'))
 
-                    elif (start_time is not None and end_time is not None and timestamp is not None and
-                          timestamp >= end_time):
-                        timestamp, balance = await self.claim(http_client=http_client)
-                        logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
+                    msg = await self.claim_daily_reward(http_client=http_client)
+                    if isinstance(msg, bool) and msg:
+                        logger.success(self.log_message(f"Claimed daily reward!"))
 
-                    elif end_time is not None and timestamp is not None:
-                        sleep_duration = end_time - timestamp
-                        logger.info(self.log_message(f"<lc>[FARMING]</lc> Sleep {format_duration(sleep_duration)}"))
-                        login_need = True
-                        await asyncio.sleep(sleep_duration)
+                    claim_amount, is_available = await self.friend_balance(http_client=http_client)
+                    if claim_amount != 0 and is_available:
+                        amount = await self.friend_claim(http_client=http_client)
+                        logger.success(self.log_message(f"Claimed friend ref reward {amount}"))
 
-                except Exception as e:
-                    log_error(self.log_message(f"<lc>[FARMING]</lc> Error in farming management: {e}"))
+                    if play_passes and play_passes > 0 and settings.PLAY_GAMES:
+                        await self.play_game(http_client=http_client, play_passes=play_passes, refresh_token=refresh_token)
 
-            except InvalidSession as error:
-                raise error
+                    await self.join_tribe(http_client=http_client)
+                    tasks = await self.get_tasks(http_client=http_client)
 
-            except Exception as error:
-                log_error(self.log_message(f"Unknown error: {error}"))
-                await asyncio.sleep(delay=3)
+                    for task in tasks:
+                        if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET":
+                            task_started = await self.start_task(http_client=http_client, task_id=task["id"])
+                            if task_started.status < 400:
+                                logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
+                            else:
+                                logger.warning(self.log_message(f"Failed to start task - '{task['title']}' Stop trying for now"))
+                                break
+                            await asyncio.sleep(random.uniform(1, 5))
+
+                    await asyncio.sleep(5)
+
+                    tasks = await self.get_tasks(http_client=http_client)
+                    for task in tasks:
+                        if task.get('status'):
+                            if task['status'] == "READY_FOR_CLAIM" and task['type'] != 'PROGRESS_TASK':
+                                status = await self.claim_task(http_client=http_client, task_id=task["id"])
+                                if status:
+                                    logger.success(self.log_message(f"Claimed task - '{task['title']}'"))
+                                await asyncio.sleep(random.uniform(1, 2))
+                            elif task['status'] == "READY_FOR_VERIFY" and task['validationType'] == 'KEYWORD':
+                                status = await self.validate_task(http_client=http_client, task_id=task["id"],
+                                                                  title=task['title'])
+
+                                if status:
+                                    logger.success(self.log_message(f"Validated task - '{task['title']}'"))
+
+                    try:
+                        timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
+
+                        if start_time is None and end_time is None:
+                            await self.start_farming(http_client=http_client)
+                            logger.info(self.log_message(f"<lc>[FARMING]</lc> Start farming!"))
+
+                        elif (start_time is not None and end_time is not None and timestamp is not None and
+                              timestamp >= end_time):
+                            timestamp, balance = await self.claim(http_client=http_client)
+                            logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
+
+                        elif end_time is not None and timestamp is not None:
+                            sleep_duration = (end_time - timestamp) * random.uniform(1.0, 1.1)
+                            logger.info(self.log_message(f"<lc>[FARMING]</lc> Sleep {format_duration(sleep_duration)}"))
+                            login_need = True
+                            await asyncio.sleep(sleep_duration)
+
+                    except Exception as e:
+                        log_error(self.log_message(f"<lc>[FARMING]</lc> Error in farming management: {e}"))
+
+                except InvalidSession as error:
+                    raise error
+
+                except Exception as error:
+                    log_error(self.log_message(f"Unknown error: {error}"))
+                    await asyncio.sleep(delay=3)
 
 
 async def run_tapper(tg_client: TelegramClient):
