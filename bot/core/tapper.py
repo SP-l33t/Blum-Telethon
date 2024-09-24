@@ -513,8 +513,10 @@ class Tapper:
                     if time() - access_token_created_time >= token_live_time:
                         init_data = await self.get_tg_web_data()
 
-                    if not init_data:
-                        raise InvalidSession('Failed to get webview URL')
+                        if not init_data:
+                            raise InvalidSession('Failed to get webview URL')
+
+                    access_token_created_time = time()
 
                     if login_need:
                         if "Authorization" in http_client.headers:
