@@ -1,5 +1,7 @@
 import json
 from bot.utils import logger, log_error
+from fasteners import InterProcessLock
+from os import path
 
 
 def read_config_file(config_path: str) -> dict:
@@ -32,9 +34,11 @@ def write_config_file(content: dict, config_path: str):
      Returns:
        The contents of the file, or an empty dict if the file was empty or created.
      """
+    lock = InterProcessLock(path.join(path.dirname(config_path), 'lock_files', 'accounts_config.lock'))
     try:
-        with open(config_path, 'w+') as f:
-            json.dump(content, f, indent=2)
+        with lock:
+            with open(config_path, 'w+') as f:
+                json.dump(content, f, indent=2)
     except IOError as e:
         logger.error(f"An error occurred while writing to {config_path}: {e}")
 

@@ -64,7 +64,7 @@ def get_unused_proxies(accounts_config, proxy_path: str):
 
 async def check_proxy(proxy):
     url = 'https://ifconfig.me/ip'
-    proxy_conn = ProxyConnector().from_url(proxy)
+    proxy_conn = ProxyConnector.from_url(proxy)
     try:
         async with aiohttp.ClientSession(connector=proxy_conn, timeout=aiohttp.ClientTimeout(15)) as session:
             response = await session.get(url)
