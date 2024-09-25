@@ -582,20 +582,20 @@ class Tapper:
                     try:
                         timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
 
-                        if start_time is None and end_time is None:
+                        if not start_time and not end_time:
                             await self.start_farming(http_client=http_client)
                             logger.info(self.log_message(f"<lc>[FARMING]</lc> Start farming!"))
 
-                        elif (start_time is not None and end_time is not None and timestamp is not None and
-                              timestamp >= end_time):
+                        elif start_time and end_time and timestamp and timestamp >= end_time:
                             timestamp, balance = await self.claim(http_client=http_client)
                             logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
 
-                        elif end_time is not None and timestamp is not None:
+                        if end_time and timestamp:
                             sleep_duration = (end_time - timestamp) * random.uniform(1.0, 1.1)
                             logger.info(self.log_message(f"<lc>[FARMING]</lc> Sleep {format_duration(sleep_duration)}"))
                             login_need = True
                             await asyncio.sleep(sleep_duration)
+                            continue
 
                     except Exception as e:
                         log_error(self.log_message(f"<lc>[FARMING]</lc> Error in farming management: {e}"))
