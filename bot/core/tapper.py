@@ -12,8 +12,8 @@ from time import time
 
 from telethon import TelegramClient
 from telethon.errors import *
-from telethon.types import InputUser, InputBotAppShortName, InputPeerUser
-from telethon.functions import messages, contacts
+from telethon.types import InputBotAppShortName
+from telethon.functions import messages
 
 from .agents import generate_random_user_agent
 from .headers import *
@@ -76,11 +76,8 @@ class Tapper:
                 if not self._webview_data:
                     while True:
                         try:
-                            resolve_result = await client(contacts.ResolveUsernameRequest(username='BlumCryptoBot'))
-                            user = resolve_result.users[0]
-                            peer = InputPeerUser(user_id=user.id, access_hash=user.access_hash)
-                            input_user = InputUser(user_id=user.id, access_hash=user.access_hash)
-                            input_bot_app = InputBotAppShortName(bot_id=input_user, short_name="app")
+                            peer = await client.get_input_entity('BlumCryptoBot')
+                            input_bot_app = InputBotAppShortName(bot_id=peer, short_name="app")
                             self._webview_data = {'peer': peer, 'app': input_bot_app}
                             break
                         except FloodWaitError as fl:
@@ -123,8 +120,7 @@ class Tapper:
                     {"query": initdata, "username": self.username, "referralToken": self.start_param.split('_')[1]}
 
                 resp = await http_client.post(
-                    f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP",
-                    json=json_data, ssl=False)
+                    f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data, ssl=False)
                 if resp.status == 520:
                     logger.warning(self.log_message('Relogin'))
                     await asyncio.sleep(delay=3)
@@ -132,7 +128,7 @@ class Tapper:
 
                 resp_json = await resp.json()
 
-                if "Username is not available" in resp_json.get("message"):
+                if "username is not available" in resp_json.get("message", "").lower():
                     while True:
                         name = self.username
                         rand_letters = ''.join(random.choices(string.ascii_lowercase, k=random.randint(3, 8)))
@@ -174,7 +170,7 @@ class Tapper:
                             logger.info(self.log_message('Username taken, retrying register with new name'))
                             await asyncio.sleep(1)
 
-                elif resp_json.get("message") == 'account is already connected to another user':
+                elif resp_json.get("message", "").lower() == 'account is already connected to another user':
 
                     json_data = {"query": initdata}
                     resp = await http_client.post(f"{self.user_url}/api/v1/auth/provider"
@@ -498,19 +494,19 @@ class Tapper:
         login_need = True
 
         access_token_created_time = 0
-        token_live_time = 3600
         init_data = None
 
-        while True:
-            proxy_conn = {'connector': ProxyConnector.from_url(self.proxy)} if self.proxy else {}
-            async with CloudflareScraper(headers=self.headers, timeout=aiohttp.ClientTimeout(60), **proxy_conn) as http_client:
+        proxy_conn = {'connector': ProxyConnector.from_url(self.proxy)} if self.proxy else {}
+        async with CloudflareScraper(headers=self.headers, timeout=aiohttp.ClientTimeout(60), **proxy_conn) as http_client:
+            while True:
                 if not await self.check_proxy(http_client=http_client):
                     logger.warning(self.log_message('Failed to connect to proxy server. Sleep 5 minutes.'))
                     await asyncio.sleep(300)
                     continue
 
+                token_live_time = random.randint(3500, 3600)
                 try:
-                    if time() - access_token_created_time >= token_live_time:
+                    if time() - access_token_created_time >= token_live_time or not init_data:
                         init_data = await self.get_tg_web_data()
 
                         if not init_data:
@@ -590,12 +586,11 @@ class Tapper:
                             timestamp, balance = await self.claim(http_client=http_client)
                             logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
 
-                        if end_time and timestamp:
+                        elif end_time and timestamp and timestamp < end_time:
                             sleep_duration = (end_time - timestamp) * random.uniform(1.0, 1.1)
                             logger.info(self.log_message(f"<lc>[FARMING]</lc> Sleep {format_duration(sleep_duration)}"))
                             login_need = True
                             await asyncio.sleep(sleep_duration)
-                            continue
 
                     except Exception as e:
                         log_error(self.log_message(f"<lc>[FARMING]</lc> Error in farming management: {e}"))
