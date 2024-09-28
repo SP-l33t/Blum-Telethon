@@ -8,13 +8,16 @@ from os import system
 
 async def main():
     if PROXY_CHAIN:
-        import socket, socks
         proxy_str, proxy = await get_proxy_chain(PROXY_CHAIN)
         if proxy:
             logger.info("Getting proxy for Proxy Chain")
             if await check_proxy(proxy_str):
+                import socket, socks
                 socks.set_default_proxy(proxy)
                 socket.socket = socks.socksocket
+            else:
+                logger.error("Proxy chain didn't respond. Can't start the bot using proxy chain")
+                exit(0)
         else:
             logger.warning("No valid proxy found. Skipping")
     await process()

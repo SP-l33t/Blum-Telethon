@@ -609,6 +609,3 @@ async def run_tapper(tg_client: TelegramClient):
         await runner.run()
     except InvalidSession as e:
         logger.error(runner.log_message(f"Invalid Session: {e}"))
-    finally:
-        if runner.lock.acquired:
-            runner.lock.release()
