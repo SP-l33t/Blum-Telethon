@@ -67,19 +67,6 @@ class Tapper:
 
         return user_agent
 
-    async def connect_client(self):
-        if not self.tg_client.is_connected():
-            try:
-                await self.tg_client.connect()
-            except (UnauthorizedError, AuthKeyUnregisteredError):
-                raise InvalidSession(f"{self.session_name}: User is unauthorized")
-            except (UserDeactivatedError, UserDeactivatedBanError, PhoneNumberBannedError):
-                raise InvalidSession(f"{self.session_name}: User is banned")
-
-    async def disconnect_client(self):
-        if self.tg_client.is_connected():
-            await self.tg_client.disconnect()
-
     async def initialize_webview_data(self):
         if not self._webview_data:
             while True:
@@ -94,11 +81,17 @@ class Tapper:
                     logger.warning(self.log_message(f"FloodWait {fl}. Waiting {fls}s"))
                     await asyncio.sleep(fls + 3)
 
+                except (UnauthorizedError, AuthKeyUnregisteredError):
+                    raise InvalidSession(f"{self.session_name}: User is unauthorized")
+                except (UserDeactivatedError, UserDeactivatedBanError, PhoneNumberBannedError):
+                    raise InvalidSession(f"{self.session_name}: User is banned")
+
     async def get_tg_web_data(self) -> str:
         tg_web_data = None
         with self.lock:
             try:
-                await self.connect_client()
+                if not self.tg_client.is_connected():
+                    await self.tg_client.connect()
                 await self.initialize_webview_data()
 
                 self.start_param = settings.REF_ID if random.randint(0, 100) <= 85 else "ref_WyOWiiqWa4"
@@ -125,11 +118,12 @@ class Tapper:
                 raise
 
             except Exception as error:
-                log_error(self.log_message(f"Unknown error during Authorization: {error}"))
+                log_error(self.log_message(f"Unknown error during Authorization: {type(error).__name__}"))
                 await asyncio.sleep(delay=3)
 
             finally:
-                await self.disconnect_client()
+                if self.tg_client.is_connected():
+                    await self.tg_client.disconnect()
 
         return tg_web_data
 
