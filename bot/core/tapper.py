@@ -124,6 +124,7 @@ class Tapper:
             finally:
                 if self.tg_client.is_connected():
                     await self.tg_client.disconnect()
+                    await asyncio.sleep(1)
 
         return tg_web_data
 
@@ -528,7 +529,9 @@ class Tapper:
                         init_data = await self.get_tg_web_data()
 
                         if not init_data:
-                            raise InvalidSession('Failed to get webview URL')
+                            logger.warning(self.log_message('Failed to get webview URL'))
+                            await asyncio.sleep(300)
+                            continue
 
                     access_token_created_time = time()
 
