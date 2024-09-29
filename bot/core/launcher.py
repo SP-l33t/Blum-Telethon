@@ -59,7 +59,7 @@ async def get_tg_clients() -> list[TelegramClient]:
             continue
 
         else:
-            working_proxy = await proxy_utils.get_working_proxy(accounts_config, session_proxy) if session_proxy else None
+            working_proxy = await proxy_utils.get_working_proxy(accounts_config, session_proxy) if session_proxy or settings.USE_PROXY_FROM_FILE else None
             if not working_proxy and (settings.USE_PROXY_FROM_FILE or session_proxy):
                 logger.warning(f"{session_name} | Didn't find a working unused proxy for session | Skipping")
                 continue
