@@ -9,3 +9,4 @@ python-socks==2.5.1
 PySocks==1.7.1
 Telethon==1.36.0
 fasteners
+ua_generator
