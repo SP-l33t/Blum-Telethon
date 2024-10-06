@@ -180,7 +180,9 @@ class Tapper:
                                 await asyncio.sleep(delay=3)
                                 continue
                             resp_json = await resp.json()
-                            # logger.debug(self.log_message(f'login text {await resp.text()}'))
+                            if not resp_json.get("token", {}).get("access") \
+                                    or not resp_json.get("token", {}).get("refresh"):
+                                continue
                             return resp_json.get("token").get("access"), resp_json.get("token").get("refresh")
 
                         else:
