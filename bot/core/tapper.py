@@ -241,7 +241,12 @@ class Tapper:
                 'Say No to Rug Pull!': 'SUPERBLUM',
                 'What Are AMMs?': 'CRYPTOSMART',
                 'Liquidity Pools Guide': 'BLUMERSSS',
-                '$2.5M+ DOGS Airdrop': 'HAPPYDOGS'
+                '$2.5M+ DOGS Airdrop': 'HAPPYDOGS',
+                "Doxxing? What's that?": 'NODOXXING',
+                "Pre-Market Trading?": 'WOWBLUM',
+                'How to Memecoin?': 'MEMEBLUM',
+                'Token Burning: How \u0026 Why?': 'ONFIRE',
+                'Play track \u0026 type track name': 'blum - big city life'
             }
 
             payload = {'keyword': keywords.get(title)}
@@ -291,6 +296,8 @@ class Tapper:
                                 for sub_task in sub_tasks:
                                     collected_tasks.append(sub_task)
                             if t.get('type') != 'PARTNER_INTEGRATION':
+                                collected_tasks.append(t)
+                            if t.get('type') == 'PARTNER_INTEGRATION' and t.get('reward'):
                                 collected_tasks.append(t)
 
                     if task.get('sectionType') == 'WEEKLY_ROUTINE':
