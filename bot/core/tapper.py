@@ -9,7 +9,7 @@ from aiohttp_proxy import ProxyConnector
 from better_proxy import Proxy
 from time import time
 
-from telethon import TelegramClient
+from opentele.tl import TelegramClient
 from telethon.errors import *
 from telethon.types import InputBotAppShortName, InputUser
 from telethon.functions import messages
@@ -31,7 +31,7 @@ class Tapper:
 
         session_config = config_utils.get_session_config(self.session_name, CONFIG_PATH)
 
-        if not all(key in session_config for key in ('api_id', 'api_hash', 'user_agent')):
+        if not all(key in session_config for key in ('api', 'user_agent')):
             logger.critical(self.log_message('CHECK accounts_config.json as it might be corrupted'))
             exit(-1)
 
@@ -161,7 +161,6 @@ class Tapper:
                             logger.warning(self.log_message('Relogin'))
                             await asyncio.sleep(delay=3)
                             continue
-                        # self.debug(f'login text {await resp.text()}')
                         resp_json = await resp.json()
 
                         if resp_json.get("token"):
@@ -476,6 +475,8 @@ class Tapper:
                 start_time = resp_json["farming"].get("startTime")
                 end_time = resp_json["farming"].get("endTime")
 
+            await asyncio.sleep(random.uniform(1, 2))
+
             return (int(timestamp / 1000) if timestamp is not None else None,
                     int(start_time / 1000) if start_time is not None else None,
                     int(end_time / 1000) if end_time is not None else None,
@@ -485,9 +486,9 @@ class Tapper:
 
     async def claim_daily_reward(self, http_client: aiohttp.ClientSession):
         try:
-            resp = await http_client.post(f"{self.game_url}/api/v1/daily-reward?offset=-180",
-                                          ssl=False)
+            resp = await http_client.post(f"{self.game_url}/api/v1/daily-reward?offset=-180", ssl=False)
             txt = await resp.text()
+            await asyncio.sleep(random.uniform(1, 2))
             return True if txt == 'OK' else txt
         except Exception as e:
             log_error(self.log_message(f"Error occurred during claim daily reward: {e}"))
@@ -562,14 +563,16 @@ class Tapper:
 
                         login_need = False
 
+                    await self.balance(http_client=http_client)
+
+                    msg = await self.claim_daily_reward(http_client=http_client)
+                    if msg is True:
+                        logger.success(self.log_message(f"Claimed daily reward!"))
+
                     timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
 
                     if isinstance(play_passes, int):
                         logger.info(self.log_message(f'You have {play_passes} play passes'))
-
-                    msg = await self.claim_daily_reward(http_client=http_client)
-                    if isinstance(msg, bool) and msg:
-                        logger.success(self.log_message(f"Claimed daily reward!"))
 
                     claim_amount, is_available = await self.friend_balance(http_client=http_client)
                     if claim_amount != 0 and is_available:
@@ -582,14 +585,18 @@ class Tapper:
                     await self.join_tribe(http_client=http_client)
                     tasks = await self.get_tasks(http_client=http_client)
 
+                    err_count = 0
                     for task in tasks:
                         if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET":
                             task_started = await self.start_task(http_client=http_client, task_id=task["id"])
                             if task_started.status < 400:
                                 logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
                             else:
-                                logger.warning(self.log_message(f"Failed to start task - '{task['title']}' Stop trying for now"))
-                                break
+                                err_count += 1
+                                if err_count > 3:
+                                    logger.warning(self.log_message(
+                                        f"Failed to start 3 tasks. Latest - '{task['title']}' Stop trying for now"))
+                                    break
                             await asyncio.sleep(random.uniform(1, 5))
 
                     await asyncio.sleep(5)
@@ -612,15 +619,18 @@ class Tapper:
                     try:
                         timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
 
+                        if start_time and end_time and timestamp and timestamp >= end_time:
+                            timestamp, balance = await self.claim(http_client=http_client)
+                            logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
+                            timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
+
                         if not start_time and not end_time:
                             await self.start_farming(http_client=http_client)
                             logger.info(self.log_message(f"<lc>[FARMING]</lc> Start farming!"))
+                            await asyncio.sleep(random.uniform(3, 5))
+                            timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
 
-                        elif start_time and end_time and timestamp and timestamp >= end_time:
-                            timestamp, balance = await self.claim(http_client=http_client)
-                            logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
-
-                        elif end_time and timestamp and timestamp < end_time:
+                        if end_time and timestamp and timestamp < end_time:
                             sleep_duration = (end_time - timestamp) * random.uniform(1.0, 1.1)
                             logger.info(self.log_message(f"<lc>[FARMING]</lc> Sleep {format_duration(sleep_duration)}"))
                             login_need = True
@@ -633,8 +643,9 @@ class Tapper:
                     raise
 
                 except Exception as error:
-                    log_error(self.log_message(f"Unknown error: {error}"))
-                    await asyncio.sleep(delay=3)
+                    sleep_duration = random.uniform(60, 120)
+                    log_error(self.log_message(f"Unknown error: {error}. Sleeping for {int(sleep_duration)}"))
+                    await asyncio.sleep(sleep_duration)
 
 
 async def run_tapper(tg_client: TelegramClient):
