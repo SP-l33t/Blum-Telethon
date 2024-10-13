@@ -583,21 +583,22 @@ class Tapper:
                         await self.play_game(http_client=http_client, play_passes=play_passes, refresh_token=refresh_token)
 
                     await self.join_tribe(http_client=http_client)
-                    tasks = await self.get_tasks(http_client=http_client)
 
-                    err_count = 0
-                    for task in tasks:
-                        if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET":
-                            task_started = await self.start_task(http_client=http_client, task_id=task["id"])
-                            if task_started.status < 400:
-                                logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
-                            else:
-                                err_count += 1
-                                if err_count > 3:
-                                    logger.warning(self.log_message(
-                                        f"Failed to start 3 tasks. Latest - '{task['title']}' Stop trying for now"))
-                                    break
-                            await asyncio.sleep(random.uniform(1, 5))
+                    if settings.PERFORM_TASKS:
+                        tasks = await self.get_tasks(http_client=http_client)
+                        err_count = 0
+                        for task in tasks:
+                            if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET":
+                                task_started = await self.start_task(http_client=http_client, task_id=task["id"])
+                                if task_started.status in range(200, 300):
+                                    logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
+                                else:
+                                    err_count += 1
+                                    if err_count > 3:
+                                        logger.warning(self.log_message(
+                                            f"Failed to start 3 tasks. Latest - '{task['title']}' Stop trying for now"))
+                                        break
+                                await asyncio.sleep(random.uniform(1, 5))
 
                     await asyncio.sleep(5)
 
