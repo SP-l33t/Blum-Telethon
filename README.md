@@ -17,7 +17,12 @@
 |              Proxy binding to session              |     ✅     |
 | Auto-register your account with your referral link |     ✅     |
 |      Auto-game with a choice of random points      |     ✅     |
-|           Support for telethon .session            |     ✅     |
+|      Supports telethon AND pyrogram .session       |     ✅     |
+
+_Script searches for session files in the following folders:_
+* /sessions
+* /sessions/pyrogram
+* /session/telethon
 
 
 ## [Settings](https://github.com/HiddenCodeDevs/BlumTelegramBot/blob/main/.env-example/)
@@ -25,6 +30,7 @@
 |:---------------------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
 |    **API_ID / API_HASH**    |                                                                                   Platform data from which to run the Telegram session (default - android)                                                                                    |
 |   **GLOBAL_CONFIG_PATH**    | Specifies the global path for accounts_config, proxies, sessions. <br/>Specify an absolute path or use an environment variable (default environment variable: **TG_FARM**) <br/>If no environment variable exists, uses the script directory. |
+|        **FIX_CERT**         |                                                                                           Try to fix  SSLCertVerificationError ( True / **False** )                                                                                           |
 |       **PLAY_GAMES**        |                                                                                                  Play games or just start farming (**True**)                                                                                                  |
 |         **POINTS**          |                                                                                         Points per game (default is [190, 230] ((That is, 190 to 230)                                                                                         |
 | **USE_RANDOM_DELAY_IN_RUN** |                                                                                                               Name says it all                                                                                                                |

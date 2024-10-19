@@ -1,33 +1,28 @@
 import aiohttp
 import asyncio
-import os
+import json
 import random
 import string
-from urllib.parse import unquote
+import re
+from urllib.parse import unquote, parse_qs
 from aiocfscrape import CloudflareScraper
 from aiohttp_proxy import ProxyConnector
 from better_proxy import Proxy
 from time import time
 
-from opentele.tl import TelegramClient
-from telethon.errors import *
-from telethon.types import InputBotAppShortName, InputUser
-from telethon.functions import messages
+from bot.utils.universal_telegram_client import UniversalTelegramClient
 
 from .headers import *
 from .helper import format_duration
 from bot.config import settings
-from bot.utils import logger, log_error, proxy_utils, config_utils, AsyncInterProcessLock, CONFIG_PATH
+from bot.utils import logger, log_error, config_utils, CONFIG_PATH, first_run
 from bot.exceptions import InvalidSession
 
 
 class Tapper:
-    def __init__(self, tg_client: TelegramClient):
+    def __init__(self, tg_client: UniversalTelegramClient):
         self.tg_client = tg_client
-        self.session_name, _ = os.path.splitext(os.path.basename(tg_client.session.filename))
-        self.lock = AsyncInterProcessLock(
-            os.path.join(os.path.dirname(CONFIG_PATH), 'lock_files',  f"{self.session_name}.lock"))
-        self.headers = headers
+        self.session_name = tg_client.session_name
 
         session_config = config_utils.get_session_config(self.session_name, CONFIG_PATH)
 
@@ -35,6 +30,7 @@ class Tapper:
             logger.critical(self.log_message('CHECK accounts_config.json as it might be corrupted'))
             exit(-1)
 
+        self.headers = headers
         user_agent = session_config.get('user_agent')
         self.headers['user-agent'] = user_agent
         self.headers.update(**get_sec_ch_ua(user_agent))
@@ -42,15 +38,10 @@ class Tapper:
         self.proxy = session_config.get('proxy')
         if self.proxy:
             proxy = Proxy.from_str(self.proxy)
-            proxy_dict = proxy_utils.to_telethon_proxy(proxy)
-            self.tg_client.set_proxy(proxy_dict)
+            self.tg_client.set_proxy(proxy)
 
-        self.user_id = 0
-        self.username = None
-        self.first_name = None
-        self.last_name = None
+        self.user_data = None
         self.start_param = None
-        self.first_run = None
 
         self.gateway_url = "https://gateway.blum.codes"
         self.game_url = "https://game-domain.blum.codes"
@@ -65,67 +56,12 @@ class Tapper:
     def log_message(self, message) -> str:
         return f"<ly>{self.session_name}</ly> | {message}"
 
-    async def initialize_webview_data(self):
-        if not self._webview_data:
-            while True:
-                try:
-                    peer = await self.tg_client.get_input_entity('BlumCryptoBot')
-                    bot_id = InputUser(user_id=peer.user_id, access_hash=peer.access_hash)
-                    input_bot_app = InputBotAppShortName(bot_id=bot_id, short_name="app")
-                    self._webview_data = {'peer': peer, 'app': input_bot_app}
-                    break
-                except FloodWaitError as fl:
-                    logger.warning(self.log_message(f"FloodWait {fl}. Waiting {fl.seconds}s"))
-                    await asyncio.sleep(fl.seconds + 3)
-                except (UnauthorizedError, AuthKeyUnregisteredError):
-                    raise InvalidSession(f"{self.session_name}: User is unauthorized")
-                except (UserDeactivatedError, UserDeactivatedBanError, PhoneNumberBannedError):
-                    raise InvalidSession(f"{self.session_name}: User is banned")
-
     async def get_tg_web_data(self) -> str:
-        if self.proxy and not self.tg_client._proxy:
-            logger.critical(self.log_message('Proxy found, but not passed to TelegramClient'))
-            exit(-1)
+        webview_url = await self.tg_client.get_app_webview_url('BlumCryptoBot', "app", "ref_WyOWiiqWa4")
 
-        tg_web_data = None
-        async with self.lock:
-            try:
-                if not self.tg_client.is_connected():
-                    await self.tg_client.connect()
-                await self.initialize_webview_data()
-                await asyncio.sleep(random.uniform(1, 2))
-
-                self.start_param = settings.REF_ID if random.randint(0, 100) <= 85 else "ref_WyOWiiqWa4"
-
-                web_view = await self.tg_client(messages.RequestAppWebViewRequest(
-                    **self._webview_data,
-                    platform='android',
-                    write_allowed=True,
-                    start_param=self.start_param
-                ))
-
-                auth_url = web_view.url
-                tg_web_data = unquote(
-                    string=auth_url.split('tgWebAppData=', maxsplit=1)[1].split('&tgWebAppVersion', maxsplit=1)[0])
-
-                if self.user_id == 0:
-                    information = await self.tg_client.get_me()
-                    self.user_id = information.id
-                    self.first_name = information.first_name or ''
-                    self.last_name = information.last_name or ''
-                    self.username = information.username or ''
-
-            except InvalidSession:
-                raise
-
-            except Exception as error:
-                log_error(self.log_message(f"Unknown error during Authorization: {type(error).__name__}"))
-                await asyncio.sleep(delay=3)
-
-            finally:
-                if self.tg_client.is_connected():
-                    await self.tg_client.disconnect()
-                    await asyncio.sleep(15)
+        tg_web_data = unquote(string=webview_url.split('tgWebAppData=')[1].split('&tgWebAppVersion')[0])
+        self.user_data = json.loads(parse_qs(tg_web_data).get('user', [''])[0])
+        self.start_param = parse_qs(tg_web_data).get('start_param', [''])[0]
 
         return tg_web_data
 
@@ -133,11 +69,12 @@ class Tapper:
         try:
             await http_client.options(url=f'{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP')
             while True:
-                json_data = {"query": initdata} if not settings.USE_REF else \
-                    {"query": initdata, "username": self.username, "referralToken": self.start_param.split('_')[1]}
+                json_data = {"query": initdata} if not self.start_param else \
+                    {"query": initdata, "username": self.user_data.get('username'),
+                     "referralToken": self.start_param.split('_')[1]}
 
                 resp = await http_client.post(
-                    f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data, ssl=False)
+                    f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
                 if resp.status == 520:
                     logger.warning(self.log_message('Relogin'))
                     await asyncio.sleep(delay=3)
@@ -145,9 +82,13 @@ class Tapper:
 
                 resp_json = await resp.json()
 
-                if "username is not available" in resp_json.get("message", "").lower():
+                if resp_json.get('token', {}).get('access'):
+                    logger.info(self.log_message(f"Logged in successfully as {self.user_data.get('username')}"))
+                    return resp_json.get("token").get("access"), resp_json.get("token").get("refresh")
+
+                elif "username is not available" in resp_json.get("message", "").lower():
                     while True:
-                        name = self.username
+                        name = self.user_data.get('username')
                         rand_letters = ''.join(random.choices(string.ascii_lowercase, k=random.randint(3, 8)))
                         new_name = name + rand_letters
 
@@ -156,7 +97,7 @@ class Tapper:
 
                         resp = await http_client.post(
                             f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP",
-                            json=json_data, ssl=False)
+                            json=json_data)
                         if resp.status == 520:
                             logger.warning(self.log_message('Relogin'))
                             await asyncio.sleep(delay=3)
@@ -171,9 +112,8 @@ class Tapper:
                         elif resp_json.get("message") == 'account is already connected to another user':
 
                             json_data = {"query": initdata}
-                            resp = await http_client.post(f"{self.user_url}/api/v1/auth/provider"
-                                                          "/PROVIDER_TELEGRAM_MINI_APP",
-                                                          json=json_data, ssl=False)
+                            resp = await http_client.post(
+                                f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
                             if resp.status == 520:
                                 logger.warning((self.log_message('Relogin')))
                                 await asyncio.sleep(delay=3)
@@ -188,17 +128,16 @@ class Tapper:
                             logger.info(self.log_message('Username taken, retrying register with new name'))
                             await asyncio.sleep(1)
 
-                elif resp_json.get("message", "").lower() == 'account is already connected to another user':
+                elif 'account is already connected to another user' in resp_json.get("message", "").lower():
 
                     json_data = {"query": initdata}
                     resp = await http_client.post(f"{self.user_url}/api/v1/auth/provider"
                                                   "/PROVIDER_TELEGRAM_MINI_APP",
-                                                  json=json_data, ssl=False)
+                                                  json=json_data)
                     if resp.status == 520:
                         logger.warning(self.log_message('Relogin'))
                         await asyncio.sleep(delay=3)
                         continue
-                    # self.debug(f'login text {await resp.text()}')
                     resp_json = await resp.json()
 
                     return resp_json.get("token").get("access"), resp_json.get("token").get("refresh")
@@ -206,7 +145,7 @@ class Tapper:
                 elif resp_json.get("token"):
 
                     logger.success(self.log_message(
-                        f'Registered using ref - {self.start_param} and nickname - {self.username}'))
+                        f"Registered using ref - {self.start_param} and nickname - {self.user_data.get('username')}"))
                     return resp_json.get("token").get("access"), resp_json.get("token").get("refresh")
 
         except Exception as error:
@@ -225,7 +164,7 @@ class Tapper:
 
     async def start_task(self, http_client: aiohttp.ClientSession, task_id):
         try:
-            return await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/start', ssl=False)
+            return await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/start')
         except Exception as error:
             log_error(self.log_message(f"Failed to start a task: {error}"))
 
@@ -251,7 +190,7 @@ class Tapper:
             payload = {'keyword': keywords.get(title)}
 
             resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/validate',
-                                          json=payload, ssl=False)
+                                          json=payload)
             resp_json = await resp.json()
             if resp_json.get('status') == "READY_FOR_CLAIM":
                 status = await self.claim_task(http_client, task_id)
@@ -276,7 +215,7 @@ class Tapper:
     async def get_tasks(self, http_client: aiohttp.ClientSession):
         try:
             while True:
-                resp = await http_client.get(f'{self.earn_domain}/api/v1/tasks', ssl=False)
+                resp = await http_client.get(f'{self.earn_domain}/api/v1/tasks')
                 if resp.status not in [200, 201]:
                     await asyncio.sleep(random.uniform(3, 5))
                     continue
@@ -304,7 +243,6 @@ class Tapper:
                         for t in tasks_list:
                             sub_tasks = t.get('subTasks', [])
                             for sub_task in sub_tasks:
-                                # print(sub_task)
                                 collected_tasks.append(sub_task)
 
                     if task.get('sectionType') == "DEFAULT":
@@ -317,8 +255,6 @@ class Tapper:
                 return collected_tasks
 
             all_tasks = collect_tasks(resp_json)
-
-            # logger.debug(f"{self.session_name} | Collected {len(all_tasks)} tasks")
 
             return all_tasks
         except Exception as error:
@@ -375,7 +311,7 @@ class Tapper:
 
     async def start_game(self, http_client: aiohttp.ClientSession):
         try:
-            resp = await http_client.post(f"{self.game_url}/api/v1/game/play", ssl=False)
+            resp = await http_client.post(f"{self.game_url}/api/v1/game/play")
             response_data = await resp.json()
             if "gameId" in response_data:
                 return response_data.get("gameId")
@@ -404,7 +340,7 @@ class Tapper:
     async def claim(self, http_client: aiohttp.ClientSession):
         try:
             while True:
-                resp = await http_client.post(f"{self.game_url}/api/v1/farming/claim", ssl=False)
+                resp = await http_client.post(f"{self.game_url}/api/v1/farming/claim")
                 if resp.status not in [200, 201]:
                     await asyncio.sleep(random.uniform(3, 5))
                     continue
@@ -419,17 +355,17 @@ class Tapper:
 
     async def start_farming(self, http_client: aiohttp.ClientSession):
         try:
-            resp = await http_client.post(f"{self.game_url}/api/v1/farming/start", ssl=False)
+            resp = await http_client.post(f"{self.game_url}/api/v1/farming/start")
 
             if resp.status != 200:
-                resp = await http_client.post(f"{self.game_url}/api/v1/farming/start", ssl=False)
+                resp = await http_client.post(f"{self.game_url}/api/v1/farming/start")
         except Exception as e:
             log_error(self.log_message(f"Error occurred during start: {e}"))
 
     async def friend_balance(self, http_client: aiohttp.ClientSession):
         try:
             while True:
-                resp = await http_client.get(f"{self.user_url}/api/v1/friends/balance", ssl=False)
+                resp = await http_client.get(f"{self.user_url}/api/v1/friends/balance")
                 if resp.status not in [200, 201]:
                     await asyncio.sleep(random.uniform(0.2, 1))
                     continue
@@ -449,11 +385,11 @@ class Tapper:
     async def friend_claim(self, http_client: aiohttp.ClientSession):
         try:
 
-            resp = await http_client.post(f"{self.user_url}/api/v1/friends/claim", ssl=False)
+            resp = await http_client.post(f"{self.user_url}/api/v1/friends/claim")
             resp_json = await resp.json()
             amount = resp_json.get("claimBalance")
             if resp.status != 200:
-                resp = await http_client.post(f"{self.user_url}/api/v1/friends/claim", ssl=False)
+                resp = await http_client.post(f"{self.user_url}/api/v1/friends/claim")
                 resp_json = await resp.json()
                 amount = resp_json.get("claimBalance")
 
@@ -463,7 +399,7 @@ class Tapper:
 
     async def balance(self, http_client: aiohttp.ClientSession):
         try:
-            resp = await http_client.get(f"{self.game_url}/api/v1/user/balance", ssl=False)
+            resp = await http_client.get(f"{self.game_url}/api/v1/user/balance")
             resp_json = await resp.json()
 
             timestamp = resp_json.get("timestamp")
@@ -486,7 +422,7 @@ class Tapper:
 
     async def claim_daily_reward(self, http_client: aiohttp.ClientSession):
         try:
-            resp = await http_client.post(f"{self.game_url}/api/v1/daily-reward?offset=-180", ssl=False)
+            resp = await http_client.post(f"{self.game_url}/api/v1/daily-reward?offset=-180")
             txt = await resp.text()
             await asyncio.sleep(random.uniform(1, 2))
             return True if txt == 'OK' else txt
@@ -497,7 +433,7 @@ class Tapper:
         if "Authorization" in http_client.headers:
             del http_client.headers["Authorization"]
         json_data = {'refresh': token}
-        resp = await http_client.post(f"{self.user_url}/api/v1/auth/refresh", json=json_data, ssl=False)
+        resp = await http_client.post(f"{self.user_url}/api/v1/auth/refresh", json=json_data)
         resp_json = await resp.json()
 
         return resp_json.get('access'), resp_json.get('refresh')
@@ -557,9 +493,10 @@ class Tapper:
 
                         http_client.headers["Authorization"] = f"Bearer {access_token}"
 
-                        if self.first_run is not True:
-                            logger.success(self.log_message("Logged in successfully"))
-                            self.first_run = True
+                        logger.success(self.log_message("Logged in successfully"))
+
+                        if self.tg_client.is_fist_run:
+                            await first_run.append_recurring_session(self.session_name)
 
                         login_need = False
 
@@ -649,7 +586,7 @@ class Tapper:
                     await asyncio.sleep(sleep_duration)
 
 
-async def run_tapper(tg_client: TelegramClient):
+async def run_tapper(tg_client: UniversalTelegramClient):
     runner = Tapper(tg_client=tg_client)
     try:
         await runner.run()
