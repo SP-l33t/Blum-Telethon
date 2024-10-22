@@ -3,7 +3,6 @@ import asyncio
 import json
 import random
 import string
-import re
 from urllib.parse import unquote, parse_qs
 from aiocfscrape import CloudflareScraper
 from aiohttp_proxy import ProxyConnector
@@ -64,6 +63,20 @@ class Tapper:
         self.start_param = parse_qs(tg_web_data).get('start_param', [''])[0]
 
         return tg_web_data
+
+    async def check_proxy(self, http_client: aiohttp.ClientSession) -> bool:
+        proxy_conn = http_client.connector
+        if proxy_conn and not hasattr(proxy_conn, '_proxy_host'):
+            logger.info(self.log_message(f"Running Proxy-less"))
+            return True
+        try:
+            response = await http_client.get(url='https://ifconfig.me/ip', timeout=aiohttp.ClientTimeout(15))
+            logger.info(self.log_message(f"Proxy IP: {await response.text()}"))
+            return True
+        except Exception as error:
+            proxy_url = f"{proxy_conn._proxy_type}://{proxy_conn._proxy_host}:{proxy_conn._proxy_port}"
+            log_error(self.log_message(f"Proxy: {proxy_url} | Error: {type(error).__name__}"))
+            return False
 
     async def login(self, http_client: aiohttp.ClientSession, initdata):
         try:
@@ -154,8 +167,7 @@ class Tapper:
 
     async def claim_task(self, http_client: aiohttp.ClientSession, task_id):
         try:
-            resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/claim',
-                                          ssl=False)
+            resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/claim')
             resp_json = await resp.json()
 
             return resp_json.get('status') == "FINISHED"
@@ -203,14 +215,14 @@ class Tapper:
             log_error(self.log_message(f"Claim task error {error}"))
 
     async def join_tribe(self, http_client: aiohttp.ClientSession):
-        try:
-            resp = await http_client.post(f'{self.tribe_url}/api/v1/tribe/6361f86f-6a55-4b6b-b2bd-f73e79e09e38/join',
-                                          ssl=False)
-            text = await resp.text()
-            if text == 'OK':
-                logger.success(self.log_message('Joined tribe'))
-        except Exception as error:
-            log_error(self.log_message(f"Join tribe {error}"))
+        if settings.JOIN_TRIBE:
+            try:
+                resp = await http_client.post(f'{self.tribe_url}/api/v1/tribe/{settings.JOIN_TRIBE}/join')
+                text = await resp.text()
+                if text == 'OK':
+                    logger.success(self.log_message('Joined tribe'))
+            except Exception as error:
+                log_error(self.log_message(f"Join tribe {error}"))
 
     async def get_tasks(self, http_client: aiohttp.ClientSession):
         try:
@@ -223,40 +235,36 @@ class Tapper:
                     break
             resp_json = await resp.json()
 
-            def collect_tasks(resp_json):
-                collected_tasks = []
-                for task in resp_json:
-                    if task.get('sectionType') == 'HIGHLIGHTS':
-                        tasks_list = task.get('tasks', [])
-                        for t in tasks_list:
-                            sub_tasks = t.get('subTasks')
-                            if sub_tasks:
-                                for sub_task in sub_tasks:
-                                    collected_tasks.append(sub_task)
-                            if t.get('type') != 'PARTNER_INTEGRATION':
-                                collected_tasks.append(t)
-                            if t.get('type') == 'PARTNER_INTEGRATION' and t.get('reward'):
-                                collected_tasks.append(t)
+            collected_tasks = []
 
-                    if task.get('sectionType') == 'WEEKLY_ROUTINE':
-                        tasks_list = task.get('tasks', [])
-                        for t in tasks_list:
-                            sub_tasks = t.get('subTasks', [])
+            for task_group in resp_json:
+                if task_group.get('sectionType') == 'HIGHLIGHTS':
+                    tasks_list = task_group.get('tasks', [])
+                    for task in tasks_list:
+                        sub_tasks = task.get('subTasks')
+                        if sub_tasks:
                             for sub_task in sub_tasks:
                                 collected_tasks.append(sub_task)
+                        if task.get('type') != 'PARTNER_INTEGRATION':
+                            collected_tasks.append(task)
+                        if task.get('type') == 'PARTNER_INTEGRATION' and task.get('reward'):
+                            collected_tasks.append(task)
 
-                    if task.get('sectionType') == "DEFAULT":
-                        sub_tasks = task.get('subSections', [])
+                if task_group.get('sectionType') == 'WEEKLY_ROUTINE':
+                    tasks_list = task_group.get('tasks', [])
+                    for task in tasks_list:
+                        sub_tasks = task.get('subTasks', [])
                         for sub_task in sub_tasks:
-                            tasks = sub_task.get('tasks', [])
-                            for task_basic in tasks:
-                                collected_tasks.append(task_basic)
+                            collected_tasks.append(sub_task)
 
-                return collected_tasks
+                if task_group.get('sectionType') == "DEFAULT":
+                    sub_tasks = task_group.get('subSections', [])
+                    for sub_task in sub_tasks:
+                        tasks = sub_task.get('tasks', [])
+                        for task_basic in tasks:
+                            collected_tasks.append(task_basic)
 
-            all_tasks = collect_tasks(resp_json)
-
-            return all_tasks
+            return collected_tasks
         except Exception as error:
             log_error(self.log_message(f"Get tasks error {error}"))
             return []
@@ -325,11 +333,9 @@ class Tapper:
             points = random.randint(settings.POINTS[0], settings.POINTS[1])
             json_data = {"gameId": game_id, "points": points}
 
-            resp = await http_client.post(f"{self.game_url}/api/v1/game/claim", json=json_data,
-                                          ssl=False)
+            resp = await http_client.post(f"{self.game_url}/api/v1/game/claim", json=json_data)
             if resp.status != 200:
-                resp = await http_client.post(f"{self.game_url}/api/v1/game/claim", json=json_data,
-                                              ssl=False)
+                resp = await http_client.post(f"{self.game_url}/api/v1/game/claim", json=json_data)
 
             txt = await resp.text()
 
@@ -438,20 +444,6 @@ class Tapper:
 
         return resp_json.get('access'), resp_json.get('refresh')
 
-    async def check_proxy(self, http_client: aiohttp.ClientSession) -> bool:
-        proxy_conn = http_client.connector
-        if proxy_conn and not hasattr(proxy_conn, '_proxy_host'):
-            logger.info(self.log_message(f"Running Proxy-less"))
-            return True
-        try:
-            response = await http_client.get(url='https://ifconfig.me/ip', timeout=aiohttp.ClientTimeout(15))
-            logger.info(self.log_message(f"Proxy IP: {await response.text()}"))
-            return True
-        except Exception as error:
-            proxy_url = f"{proxy_conn._proxy_type}://{proxy_conn._proxy_host}:{proxy_conn._proxy_port}"
-            log_error(self.log_message(f"Proxy: {proxy_url} | Error: {type(error).__name__}"))
-            return False
-
     async def run(self) -> None:
         if settings.USE_RANDOM_DELAY_IN_RUN:
             random_delay = random.uniform(settings.RANDOM_DELAY_IN_RUN[0], settings.RANDOM_DELAY_IN_RUN[1])
@@ -479,7 +471,7 @@ class Tapper:
                         init_data = await self.get_tg_web_data()
 
                         if not init_data:
-                            logger.warning(self.log_message('Failed to get webview URL'))
+                            logger.warning(self.log_message('Failed to get webview URL. Retrying in 5 minutes'))
                             await asyncio.sleep(300)
                             continue
 

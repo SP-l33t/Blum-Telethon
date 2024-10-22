@@ -59,9 +59,8 @@ def get_proxies(proxy_path: str) -> list[str]:
 
     if settings.USE_PROXY_FROM_FILE:
         with open(file=proxy_path, encoding="utf-8-sig") as file:
-            return [Proxy.from_str(proxy=row.strip()).as_url
-                    for row in file
-                    if row.strip() and not row.strip().startswith('type')]
+            return list({Proxy.from_str(proxy=row.strip()).as_url for row in file if row.strip() and
+                         not row.strip().startswith('type')})
     else:
         return []
 

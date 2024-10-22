@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     FIX_CERT: bool = False
 
+    JOIN_TRIBE: str = "6361f86f-6a55-4b6b-b2bd-f73e79e09e38"
     PLAY_GAMES: bool = True
     POINTS: list[int] = [190, 230]
 
