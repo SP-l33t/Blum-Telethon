@@ -430,7 +430,7 @@ class Tapper:
 
             timestamp = resp_json.get("timestamp")
             play_passes = resp_json.get("playPasses")
-            balance = int(float(resp_json.get('availableBalance')))
+            balance = int(float(resp_json.get('availableBalance', 0)))
 
             start_time = None
             end_time = None
