@@ -187,7 +187,7 @@ class Tapper:
 
             keyword = [item["answer"] for item in tasks if item['id'] == task_id]
 
-            payload = {'keyword': keyword}
+            payload = {'keyword': keyword[0]}
 
             resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/validate', json=payload)
             resp.raise_for_status()
