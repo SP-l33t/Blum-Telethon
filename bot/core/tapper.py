@@ -182,24 +182,15 @@ class Tapper:
 
     async def validate_task(self, http_client: aiohttp.ClientSession, task_id, title):
         try:
-            keywords = {
-                'How to Analyze Crypto?': 'VALUE',
-                'Forks Explained': 'GO GET',
-                'Secure your Crypto!': 'BEST PROJECT EVER',
-                'Navigating Crypto': 'HEYBLUM',
-                'What are Telegram Mini Apps?': 'CRYPTOBLUM',
-                'Say No to Rug Pull!': 'SUPERBLUM',
-                'What Are AMMs?': 'CRYPTOSMART',
-                'Liquidity Pools Guide': 'BLUMERSSS',
-                '$2.5M+ DOGS Airdrop': 'HAPPYDOGS',
-                "Doxxing? What's that?": 'NODOXXING',
-                "Pre-Market Trading?": 'WOWBLUM',
-                'How to Memecoin?': 'MEMEBLUM',
-                'Token Burning: How \u0026 Why?': 'ONFIRE',
-                'Play track \u0026 type track name': 'blum - big city life'
-            }
+            url = 'https://raw.githubusercontent.com/zuydd/database/main/blum.json'
+            data = requests.get(url=url)
+            data_json = data.json()
 
-            payload = {'keyword': keywords.get(title)}
+            tasks = data_json.get('tasks')
+
+            keyword = [item["answer"] for item in tasks if item['id'] == task_id]
+
+            payload = {'keyword': keyword}
 
             resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/validate',
                                           json=payload)
@@ -304,7 +295,13 @@ class Tapper:
 
                 await asyncio.sleep(random.uniform(30, 40))
 
-                msg, points = await self.claim_game(game_id=game_id, http_client=http_client)
+                data_elig = await self.elig_dogs(http_client=http_client)
+                if data_elig:
+                    dogs = random.randint(25, 30) * 5
+                    msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=dogs)
+                else:
+                    msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=0)
+
                 if isinstance(msg, bool) and msg:
                     logger.info(self.log_message(f"Finish play in game! reward: {points}"))
                 else:
@@ -319,7 +316,7 @@ class Tapper:
 
     async def start_game(self, http_client: aiohttp.ClientSession):
         try:
-            resp = await http_client.post(f"{self.game_url}/api/v1/game/play")
+            resp = await http_client.post(f"{self.game_url}/api/v2/game/play")
             response_data = await resp.json()
             if "gameId" in response_data:
                 return response_data.get("gameId")
@@ -328,14 +325,47 @@ class Tapper:
         except Exception as e:
             log_error(self.log_message(f"Error occurred during start game: {e}"))
 
-    async def claim_game(self, game_id: str, http_client: aiohttp.ClientSession):
+    async def elig_dogs(self, http_client: aiohttp.ClientSession):
+        try:
+            resp = await http_client.get('https://game-domain.blum.codes/api/v2/game/eligibility/dogs_drop')
+            if resp is not None:
+                data = await resp.json()
+                eligible = data.get('eligible', False)
+                return eligible
+
+        except Exception as e:
+            self.error(f"Failed elif dogs, error: {e}")
+        return None
+
+    async def get_data_payload(self):
+        url = 'https://raw.githubusercontent.com/zuydd/database/main/blum.json'
+        data = requests.get(url=url)
+        return data.json()
+
+    async def create_payload(self, http_client: aiohttp.ClientSession, game_id, points, dogs):
+        data = await self.get_data_payload()
+        payload_server = data.get('payloadServer', [])
+        filtered_data = [item for item in payload_server if item['status'] == 1]
+        random_id = random.choice([item['id'] for item in filtered_data])
+        resp = await http_client.post(f'https://{random_id}.vercel.app/api/blum', json={'game_id': game_id,
+                                                                                        'points': points,
+                                                                                        'dogs': dogs
+                                                                                        })
+        if resp is not None:
+            data = await resp.json()
+            if "payload" in data:
+                return data["payload"]
+            return None
+
+    async def claim_game(self, game_id: str, dogs, http_client: aiohttp.ClientSession):
         try:
             points = random.randint(settings.POINTS[0], settings.POINTS[1])
-            json_data = {"gameId": game_id, "points": points}
 
-            resp = await http_client.post(f"{self.game_url}/api/v1/game/claim", json=json_data)
+            data = await self.create_payload(http_client=http_client, game_id=game_id, points=points, dogs=dogs)
+
+            resp = await http_client.post(f"{self.game_url}/api/v2/game/claim", json={'payload': data})
             if resp.status != 200:
-                resp = await http_client.post(f"{self.game_url}/api/v1/game/claim", json=json_data)
+                resp = await http_client.post(f"{self.game_url}/api/v2/game/claim", json={'payload': data})
 
             txt = await resp.text()
 
