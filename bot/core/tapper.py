@@ -1,12 +1,12 @@
 import aiohttp
 import asyncio
 import json
-import random
 import string
 from urllib.parse import unquote, parse_qs
 from aiocfscrape import CloudflareScraper
 from aiohttp_proxy import ProxyConnector
 from better_proxy import Proxy
+from random import randint, uniform, choices
 from time import time
 
 from bot.utils.universal_telegram_client import UniversalTelegramClient
@@ -41,6 +41,7 @@ class Tapper:
 
         self.user_data = None
         self.start_param = None
+        self.blum_data = None
 
         self.gateway_url = "https://gateway.blum.codes"
         self.game_url = "https://game-domain.blum.codes"
@@ -64,7 +65,7 @@ class Tapper:
 
         return tg_web_data
 
-    async def check_proxy(self, http_client: aiohttp.ClientSession) -> bool:
+    async def check_proxy(self, http_client: CloudflareScraper) -> bool:
         proxy_conn = http_client.connector
         if proxy_conn and not hasattr(proxy_conn, '_proxy_host'):
             logger.info(self.log_message(f"Running Proxy-less"))
@@ -78,7 +79,7 @@ class Tapper:
             log_error(self.log_message(f"Proxy: {proxy_url} | Error: {type(error).__name__}"))
             return False
 
-    async def login(self, http_client: aiohttp.ClientSession, initdata):
+    async def login(self, http_client: CloudflareScraper, initdata):
         try:
             await http_client.options(url=f'{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP')
             while True:
@@ -102,7 +103,7 @@ class Tapper:
                 elif "username is not available" in resp_json.get("message", "").lower():
                     while True:
                         name = self.user_data.get('username')
-                        rand_letters = ''.join(random.choices(string.ascii_lowercase, k=random.randint(3, 8)))
+                        rand_letters = ''.join(choices(string.ascii_lowercase, k=randint(3, 8)))
                         new_name = name + rand_letters
 
                         json_data = {"query": initdata, "username": new_name,
@@ -165,7 +166,7 @@ class Tapper:
             log_error(self.log_message(f"Login error {error}"))
             return None, None
 
-    async def claim_task(self, http_client: aiohttp.ClientSession, task_id):
+    async def claim_task(self, http_client: CloudflareScraper, task_id):
         try:
             resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/claim')
             resp_json = await resp.json()
@@ -174,38 +175,33 @@ class Tapper:
         except Exception as error:
             log_error(self.log_message(f"Claim task error {error}"))
 
-    async def start_task(self, http_client: aiohttp.ClientSession, task_id):
+    async def start_task(self, http_client: CloudflareScraper, task_id):
         try:
             return await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/start')
         except Exception as error:
             log_error(self.log_message(f"Failed to start a task: {error}"))
 
-    async def validate_task(self, http_client: aiohttp.ClientSession, task_id, title):
+    async def validate_task(self, http_client: CloudflareScraper, task_id):
         try:
-            url = 'https://raw.githubusercontent.com/zuydd/database/main/blum.json'
-            data = requests.get(url=url)
-            data_json = data.json()
-
-            tasks = data_json.get('tasks')
+            tasks = self.blum_data.get('tasks')
 
             keyword = [item["answer"] for item in tasks if item['id'] == task_id]
 
             payload = {'keyword': keyword}
 
-            resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/validate',
-                                          json=payload)
+            resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/validate', json=payload)
+            resp.raise_for_status()
             resp_json = await resp.json()
+            is_finished = False
             if resp_json.get('status') == "READY_FOR_CLAIM":
-                status = await self.claim_task(http_client, task_id)
-                if status:
-                    return status
-            else:
-                return False
+                is_finished = await self.claim_task(http_client, task_id)
+
+            return is_finished
 
         except Exception as error:
             log_error(self.log_message(f"Claim task error {error}"))
 
-    async def join_tribe(self, http_client: aiohttp.ClientSession):
+    async def join_tribe(self, http_client: CloudflareScraper):
         if settings.JOIN_TRIBE:
             try:
                 resp = await http_client.post(f'{self.tribe_url}/api/v1/tribe/{settings.JOIN_TRIBE}/join')
@@ -215,12 +211,12 @@ class Tapper:
             except Exception as error:
                 log_error(self.log_message(f"Join tribe {error}"))
 
-    async def get_tasks(self, http_client: aiohttp.ClientSession):
+    async def get_tasks(self, http_client: CloudflareScraper):
         try:
             while True:
                 resp = await http_client.get(f'{self.earn_domain}/api/v1/tasks')
                 if resp.status not in [200, 201]:
-                    await asyncio.sleep(random.uniform(3, 5))
+                    await asyncio.sleep(uniform(3, 5))
                     continue
                 else:
                     break
@@ -260,10 +256,13 @@ class Tapper:
             log_error(self.log_message(f"Get tasks error {error}"))
             return []
 
-    async def play_game(self, http_client: aiohttp.ClientSession, play_passes, refresh_token):
+    async def play_game(self, http_client: CloudflareScraper, play_passes):
         try:
             total_games = 0
             tries = 3
+            max_games = randint(5, 20)
+            data_elig = await self.elig_dogs(http_client=http_client)
+
             while play_passes:
                 game_id = await self.start_game(http_client=http_client)
 
@@ -275,29 +274,18 @@ class Tapper:
                         logger.warning(self.log_message('No more trying, gonna skip games'))
                         break
                     continue
-                else:
-                    if total_games != 25:
-                        total_games += 1
-                        logger.success(self.log_message("Started playing game"))
-                    else:
-                        logger.info(self.log_message("Getting new token to play games"))
-                        while True:
-                            (access_token,
-                             refresh_token) = await self.refresh_token(http_client=http_client, token=refresh_token)
-                            if access_token:
-                                http_client.headers["Authorization"] = f"Bearer {access_token}"
-                                logger.success(self.log_message('Got new token'))
-                                total_games = 0
-                                break
-                            else:
-                                log_error(self.log_message('Can`t get new token, trying again'))
-                                continue
 
-                await asyncio.sleep(random.uniform(30, 40))
+                if total_games >= max_games:
+                    logger.info(self.log_message(f"Played {total_games}. Enough for now"))
+                    return
 
-                data_elig = await self.elig_dogs(http_client=http_client)
+                total_games += 1
+                logger.success(self.log_message("Started playing game"))
+
+                await asyncio.sleep(uniform(30, 40))
+
                 if data_elig:
-                    dogs = random.randint(25, 30) * 5
+                    dogs = randint(25, 30) * 5
                     msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=dogs)
                 else:
                     msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=0)
@@ -308,13 +296,14 @@ class Tapper:
                     logger.info(self.log_message(f"Couldn't play game, msg: {msg} play_passes: {play_passes}"))
                     break
 
-                await asyncio.sleep(random.uniform(1, 5))
+                await asyncio.sleep(uniform(2, 5))
 
                 play_passes -= 1
+
         except Exception as e:
             log_error(self.log_message(f"Error occurred during play game: {e}"))
 
-    async def start_game(self, http_client: aiohttp.ClientSession):
+    async def start_game(self, http_client: CloudflareScraper):
         try:
             resp = await http_client.post(f"{self.game_url}/api/v2/game/play")
             response_data = await resp.json()
@@ -325,43 +314,44 @@ class Tapper:
         except Exception as e:
             log_error(self.log_message(f"Error occurred during start game: {e}"))
 
-    async def elig_dogs(self, http_client: aiohttp.ClientSession):
+    async def elig_dogs(self, http_client: CloudflareScraper):
         try:
-            resp = await http_client.get('https://game-domain.blum.codes/api/v2/game/eligibility/dogs_drop')
+            resp = await http_client.get(f'{self.game_url}/api/v2/game/eligibility/dogs_drop')
             if resp is not None:
                 data = await resp.json()
                 eligible = data.get('eligible', False)
                 return eligible
 
         except Exception as e:
-            self.error(f"Failed elif dogs, error: {e}")
+            log_error(self.log_message(f"Failed elif dogs, error: {e}"))
         return None
 
     async def get_data_payload(self):
         url = 'https://raw.githubusercontent.com/zuydd/database/main/blum.json'
-        data = requests.get(url=url)
-        return data.json()
+        async with aiohttp.request(url=url, method="GET") as response:
+            self.blum_data = json.loads(await response.text())
 
-    async def create_payload(self, http_client: aiohttp.ClientSession, game_id, points, dogs):
-        data = await self.get_data_payload()
-        payload_server = data.get('payloadServer', [])
-        filtered_data = [item for item in payload_server if item['status'] == 1]
-        random_id = random.choice([item['id'] for item in filtered_data])
-        resp = await http_client.post(f'https://{random_id}.vercel.app/api/blum', json={'game_id': game_id,
-                                                                                        'points': points,
-                                                                                        'dogs': dogs
-                                                                                        })
-        if resp is not None:
-            data = await resp.json()
-            if "payload" in data:
-                return data["payload"]
-            return None
+    async def create_payload(self, http_client: CloudflareScraper, game_id, points, dogs):
+        payload_servers = self.blum_data.get('payloadServer', [])
+        available_servers = [item for item in payload_servers if item['status'] == 1]
+        for server in available_servers:
+            resp = await http_client.post(f"https://{server['id']}.vercel.app/api/blum",
+                                          json={'game_id': game_id, 'points': points, 'dogs': dogs})
+            if resp.status in range(200, 300):
+                data = await resp.json()
+                if data.get("payload"):
+                    return data.get("payload")
+            logger.warning(self.log_message(f"Failed to create payload from server {server['id']}"))
+        return None
 
-    async def claim_game(self, game_id: str, dogs, http_client: aiohttp.ClientSession):
+    async def claim_game(self, game_id: str, dogs, http_client: CloudflareScraper):
         try:
-            points = random.randint(settings.POINTS[0], settings.POINTS[1])
+            points = randint(settings.POINTS[0], settings.POINTS[1])
 
             data = await self.create_payload(http_client=http_client, game_id=game_id, points=points, dogs=dogs)
+
+            if not data:
+                return None
 
             resp = await http_client.post(f"{self.game_url}/api/v2/game/claim", json={'payload': data})
             if resp.status != 200:
@@ -373,12 +363,12 @@ class Tapper:
         except Exception as e:
             log_error(self.log_message(f"Error occurred during claim game: {e}"))
 
-    async def claim(self, http_client: aiohttp.ClientSession):
+    async def claim(self, http_client: CloudflareScraper):
         try:
             while True:
                 resp = await http_client.post(f"{self.game_url}/api/v1/farming/claim")
                 if resp.status not in [200, 201]:
-                    await asyncio.sleep(random.uniform(3, 5))
+                    await asyncio.sleep(uniform(3, 5))
                     continue
                 else:
                     break
@@ -389,7 +379,7 @@ class Tapper:
         except Exception as e:
             log_error(self.log_message(f"Error occurred during claim: {e}"))
 
-    async def start_farming(self, http_client: aiohttp.ClientSession):
+    async def start_farming(self, http_client: CloudflareScraper):
         try:
             resp = await http_client.post(f"{self.game_url}/api/v1/farming/start")
 
@@ -398,12 +388,12 @@ class Tapper:
         except Exception as e:
             log_error(self.log_message(f"Error occurred during start: {e}"))
 
-    async def friend_balance(self, http_client: aiohttp.ClientSession):
+    async def friend_balance(self, http_client: CloudflareScraper):
         try:
             while True:
                 resp = await http_client.get(f"{self.user_url}/api/v1/friends/balance")
                 if resp.status not in [200, 201]:
-                    await asyncio.sleep(random.uniform(0.2, 1))
+                    await asyncio.sleep(uniform(0.2, 1))
                     continue
                 else:
                     break
@@ -418,7 +408,7 @@ class Tapper:
             log_error(self.log_message(f"Error occurred during friend balance: {e}"))
             return None, None
 
-    async def friend_claim(self, http_client: aiohttp.ClientSession):
+    async def friend_claim(self, http_client: CloudflareScraper):
         try:
 
             resp = await http_client.post(f"{self.user_url}/api/v1/friends/claim")
@@ -433,13 +423,14 @@ class Tapper:
         except Exception as e:
             log_error(self.log_message(f"Error occurred during friends claim: {e}"))
 
-    async def balance(self, http_client: aiohttp.ClientSession):
+    async def balance(self, http_client: CloudflareScraper):
         try:
             resp = await http_client.get(f"{self.game_url}/api/v1/user/balance")
             resp_json = await resp.json()
 
             timestamp = resp_json.get("timestamp")
             play_passes = resp_json.get("playPasses")
+            balance = int(float(resp_json.get('availableBalance')))
 
             start_time = None
             end_time = None
@@ -447,25 +438,25 @@ class Tapper:
                 start_time = resp_json["farming"].get("startTime")
                 end_time = resp_json["farming"].get("endTime")
 
-            await asyncio.sleep(random.uniform(1, 2))
+            await asyncio.sleep(uniform(1, 2))
 
             return (int(timestamp / 1000) if timestamp is not None else None,
                     int(start_time / 1000) if start_time is not None else None,
                     int(end_time / 1000) if end_time is not None else None,
-                    play_passes)
+                    play_passes, balance)
         except Exception as e:
             log_error(self.log_message(f"Error occurred during balance: {e}"))
 
-    async def claim_daily_reward(self, http_client: aiohttp.ClientSession):
+    async def claim_daily_reward(self, http_client: CloudflareScraper):
         try:
             resp = await http_client.post(f"{self.game_url}/api/v1/daily-reward?offset=-180")
             txt = await resp.text()
-            await asyncio.sleep(random.uniform(1, 2))
+            await asyncio.sleep(uniform(1, 2))
             return True if txt == 'OK' else txt
         except Exception as e:
             log_error(self.log_message(f"Error occurred during claim daily reward: {e}"))
 
-    async def refresh_token(self, http_client: aiohttp.ClientSession, token):
+    async def refresh_token(self, http_client: CloudflareScraper, token):
         if "Authorization" in http_client.headers:
             del http_client.headers["Authorization"]
         json_data = {'refresh': token}
@@ -476,7 +467,7 @@ class Tapper:
 
     async def run(self) -> None:
         if settings.USE_RANDOM_DELAY_IN_RUN:
-            random_delay = random.uniform(settings.RANDOM_DELAY_IN_RUN[0], settings.RANDOM_DELAY_IN_RUN[1])
+            random_delay = uniform(settings.RANDOM_DELAY_IN_RUN[0], settings.RANDOM_DELAY_IN_RUN[1])
             logger.info(self.log_message(f"Bot will start in <ly>{int(random_delay)}s</ly>"))
             await asyncio.sleep(random_delay)
 
@@ -495,7 +486,7 @@ class Tapper:
                     await asyncio.sleep(300)
                     continue
 
-                token_live_time = random.randint(3500, 3600)
+                token_live_time = randint(3500, 3600)
                 try:
                     if time() - access_token_created_time >= token_live_time or not init_data:
                         init_data = await self.get_tg_web_data()
@@ -506,6 +497,8 @@ class Tapper:
                             continue
 
                     access_token_created_time = time()
+
+                    await self.get_data_payload()
 
                     if login_need:
                         if "Authorization" in http_client.headers:
@@ -528,10 +521,10 @@ class Tapper:
                     if msg is True:
                         logger.success(self.log_message(f"Claimed daily reward!"))
 
-                    timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
+                    timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client=http_client)
 
                     if isinstance(play_passes, int):
-                        logger.info(self.log_message(f'You have {play_passes} play passes'))
+                        logger.info(self.log_message(f'Balance: <lg>{balance}</lg> | Play passes: <lg>{play_passes}</lg>'))
 
                     claim_amount, is_available = await self.friend_balance(http_client=http_client)
                     if claim_amount != 0 and is_available:
@@ -539,7 +532,7 @@ class Tapper:
                         logger.success(self.log_message(f"Claimed friend ref reward {amount}"))
 
                     if play_passes and play_passes > 0 and settings.PLAY_GAMES:
-                        await self.play_game(http_client=http_client, play_passes=play_passes, refresh_token=refresh_token)
+                        await self.play_game(http_client=http_client, play_passes=play_passes)
 
                     await self.join_tribe(http_client=http_client)
 
@@ -557,7 +550,7 @@ class Tapper:
                                         logger.warning(self.log_message(
                                             f"Failed to start 3 tasks. Latest - '{task['title']}' Stop trying for now"))
                                         break
-                                await asyncio.sleep(random.uniform(1, 5))
+                                await asyncio.sleep(uniform(1, 5))
 
                     await asyncio.sleep(5)
 
@@ -568,30 +561,29 @@ class Tapper:
                                 status = await self.claim_task(http_client=http_client, task_id=task["id"])
                                 if status:
                                     logger.success(self.log_message(f"Claimed task - '{task['title']}'"))
-                                await asyncio.sleep(random.uniform(1, 2))
+                                await asyncio.sleep(uniform(1, 2))
                             elif task['status'] == "READY_FOR_VERIFY" and task['validationType'] == 'KEYWORD':
-                                status = await self.validate_task(http_client=http_client, task_id=task["id"],
-                                                                  title=task['title'])
+                                status = await self.validate_task(http_client=http_client, task_id=task["id"])
 
                                 if status:
                                     logger.success(self.log_message(f"Validated task - '{task['title']}'"))
 
                     try:
-                        timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
+                        timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client=http_client)
 
                         if start_time and end_time and timestamp and timestamp >= end_time:
                             timestamp, balance = await self.claim(http_client=http_client)
                             logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
-                            timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
+                            timestamp, start_time, end_time, play_passes, balanc = await self.balance(http_client=http_client)
 
                         if not start_time and not end_time:
                             await self.start_farming(http_client=http_client)
                             logger.info(self.log_message(f"<lc>[FARMING]</lc> Start farming!"))
-                            await asyncio.sleep(random.uniform(3, 5))
-                            timestamp, start_time, end_time, play_passes = await self.balance(http_client=http_client)
+                            await asyncio.sleep(uniform(3, 5))
+                            timestamp, start_time, end_time, play_passes, balanc = await self.balance(http_client=http_client)
 
                         if end_time and timestamp and timestamp < end_time:
-                            sleep_duration = (end_time - timestamp) * random.uniform(1.0, 1.1)
+                            sleep_duration = (end_time - timestamp) * uniform(1.0, 1.1)
                             logger.info(self.log_message(f"<lc>[FARMING]</lc> Sleep {format_duration(sleep_duration)}"))
                             login_need = True
                             await asyncio.sleep(sleep_duration)
@@ -603,7 +595,7 @@ class Tapper:
                     raise
 
                 except Exception as error:
-                    sleep_duration = random.uniform(60, 120)
+                    sleep_duration = uniform(60, 120)
                     log_error(self.log_message(f"Unknown error: {error}. Sleeping for {int(sleep_duration)}"))
                     await asyncio.sleep(sleep_duration)
 
