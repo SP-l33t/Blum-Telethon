@@ -6,7 +6,7 @@ from urllib.parse import unquote, parse_qs
 from aiocfscrape import CloudflareScraper
 from aiohttp_proxy import ProxyConnector
 from better_proxy import Proxy
-from random import randint, uniform, choices
+from random import randint, uniform, choices, shuffle
 from time import time
 
 from bot.utils.universal_telegram_client import UniversalTelegramClient
@@ -50,6 +50,8 @@ class Tapper:
         self.tribe_url = "https://tribe-domain.blum.codes"
         self.user_url = "https://user-domain.blum.codes"
         self.earn_domain = "https://earn-domain.blum.codes"
+
+        self.api_quota = 99999
 
         self._webview_data = None
 
@@ -285,13 +287,13 @@ class Tapper:
                 await asyncio.sleep(uniform(30, 40))
 
                 if data_elig:
-                    dogs = randint(25, 30) * 5
+                    dogs = randint(3, 25)
                     msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=dogs)
                 else:
                     msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=0)
 
                 if isinstance(msg, bool) and msg:
-                    logger.info(self.log_message(f"Finish play in game! reward: {points}"))
+                    logger.info(self.log_message(f"Finished playing game! Reward: <ly>{points}</ly>"))
                 else:
                     logger.info(self.log_message(f"Couldn't play game, msg: {msg} play_passes: {play_passes}"))
                     break
@@ -332,21 +334,34 @@ class Tapper:
             self.blum_data = json.loads(await response.text())
 
     async def create_payload(self, http_client: CloudflareScraper, game_id, points, dogs):
-        payload_servers = self.blum_data.get('payloadServer', [])
-        available_servers = [item for item in payload_servers if item['status'] == 1]
+        api_key = settings.PAYLOAD_API_KEY
+        payload_servers = self.blum_data.get('server', {}).get("pro", []) if "pro" in api_key.lower() else \
+            self.blum_data.get('server', {}).get("free", [])
+        available_servers = [item for item in payload_servers if item.get('status', 0) == 1]
+        shuffle(available_servers)
         for server in available_servers:
-            resp = await http_client.post(f"https://{server['id']}.vercel.app/api/blum",
-                                          json={'game_id': game_id, 'points': points, 'dogs': dogs})
+            resp = await http_client.post(f"{server['url']}blum/payload",
+                                          json={'game_id': game_id, 'points': points, 'dogs': dogs},
+                                          headers={"X-API-KEY": api_key})
+
             if resp.status in range(200, 300):
-                data = await resp.json()
+                data = (await resp.json()).get('data')
+                if data.get("remaining_quota"):
+                    self.api_quota = data.get("remaining_quota")
+                    logger.info(self.log_message(f"Remaining API Quota: {self.api_quota}"))
                 if data.get("payload"):
                     return data.get("payload")
-            logger.warning(self.log_message(f"Failed to create payload from server {server['id']}"))
+            logger.warning(self.log_message(f"Failed to create payload from server {server['url']}"))
         return None
 
     async def claim_game(self, game_id: str, dogs, http_client: CloudflareScraper):
+        api_key = settings.PAYLOAD_API_KEY
+        if not api_key or not ("pro" in api_key.lower() or "free" in api_key.lower()):
+            logger.warning(self.log_message("No valid API key found. Can't play games"))
+            return
         try:
-            points = randint(settings.POINTS[0], settings.POINTS[1])
+            points = randint(settings.POINTS[0], settings.POINTS[1]) - dogs
+            dogs = round(dogs / 10, 1) if dogs else 0
 
             data = await self.create_payload(http_client=http_client, game_id=game_id, points=points, dogs=dogs)
 
