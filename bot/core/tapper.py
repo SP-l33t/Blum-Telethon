@@ -567,21 +567,21 @@ class Tapper:
                                         break
                                 await asyncio.sleep(uniform(1, 5))
 
-                    await asyncio.sleep(5)
+                        await asyncio.sleep(5)
 
-                    tasks = await self.get_tasks(http_client=http_client)
-                    for task in tasks:
-                        if task.get('status'):
-                            if task['status'] == "READY_FOR_CLAIM" and task['type'] != 'PROGRESS_TASK':
-                                status = await self.claim_task(http_client=http_client, task_id=task["id"])
-                                if status:
-                                    logger.success(self.log_message(f"Claimed task - '{task['title']}'"))
-                                await asyncio.sleep(uniform(1, 2))
-                            elif task['status'] == "READY_FOR_VERIFY" and task['validationType'] == 'KEYWORD':
-                                status = await self.validate_task(http_client=http_client, task_id=task["id"])
+                        tasks = await self.get_tasks(http_client=http_client)
+                        for task in tasks:
+                            if task.get('status'):
+                                if task['status'] == "READY_FOR_CLAIM" and task['type'] != 'PROGRESS_TASK':
+                                    status = await self.claim_task(http_client=http_client, task_id=task["id"])
+                                    if status:
+                                        logger.success(self.log_message(f"Claimed task - '{task['title']}'"))
+                                    await asyncio.sleep(uniform(1, 2))
+                                elif task['status'] == "READY_FOR_VERIFY" and task['validationType'] == 'KEYWORD':
+                                    status = await self.validate_task(http_client=http_client, task_id=task["id"])
 
-                                if status:
-                                    logger.success(self.log_message(f"Validated task - '{task['title']}'"))
+                                    if status:
+                                        logger.success(self.log_message(f"Validated task - '{task['title']}'"))
 
                     try:
                         timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client=http_client)
