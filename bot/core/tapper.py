@@ -14,7 +14,7 @@ from bot.utils.universal_telegram_client import UniversalTelegramClient
 from .headers import *
 from .helper import format_duration
 from bot.config import settings
-from bot.utils import logger, log_error, config_utils, CONFIG_PATH, first_run
+from bot.utils import logger, log_error, config_utils, CONFIG_PATH, first_run, payload
 from bot.exceptions import InvalidSession
 
 
@@ -259,13 +259,17 @@ class Tapper:
             return []
 
     async def play_game(self, http_client: CloudflareScraper, play_passes):
+        api_key = settings.PAYLOAD_API_KEY
+        if not (settings.LOCAL_PAYLOAD or (api_key and ("pro" in api_key.lower() or "free" in api_key.lower()))):
+            logger.warning(self.log_message("Node.js isn't installed and no valid API key found. Can't play games"))
+            return
         try:
             total_games = 0
             tries = 3
             max_games = randint(5, 20)
             data_elig = await self.elig_dogs(http_client=http_client)
 
-            while play_passes:
+            while play_passes and self.api_quota:
                 game_id = await self.start_game(http_client=http_client)
 
                 if not game_id or game_id == "cannot start game":
@@ -355,15 +359,14 @@ class Tapper:
         return None
 
     async def claim_game(self, game_id: str, dogs, http_client: CloudflareScraper):
-        api_key = settings.PAYLOAD_API_KEY
-        if not api_key or not ("pro" in api_key.lower() or "free" in api_key.lower()):
-            logger.warning(self.log_message("No valid API key found. Can't play games"))
-            return
         try:
             points = randint(settings.POINTS[0], settings.POINTS[1]) - dogs
             dogs = round(dogs / 10, 1) if dogs else 0
 
-            data = await self.create_payload(http_client=http_client, game_id=game_id, points=points, dogs=dogs)
+            if settings.LOCAL_PAYLOAD:
+                data = (await payload.create_payload_local(game_id=game_id, points=points, dogs=dogs)).get('payload')
+            else:
+                data = await self.create_payload(http_client=http_client, game_id=game_id, points=points, dogs=dogs)
 
             if not data:
                 return None

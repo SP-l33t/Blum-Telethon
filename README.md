@@ -7,6 +7,7 @@
 ## Recommendation before use
 
 # 🔥🔥 PYTHON version must be 3.10 🔥🔥
+# 🔥🔥 FOR LOCAL games Node.js 20+ is a MUST 🔥🔥
 
 > 🇷 🇺 README in russian available [here](README-RU.md)
 

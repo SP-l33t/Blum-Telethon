@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     JOIN_TRIBE: str = "6361f86f-6a55-4b6b-b2bd-f73e79e09e38"
     PLAY_GAMES: bool = True
+    LOCAL_PAYLOAD: bool = False
     PAYLOAD_API_KEY: str = ""
     POINTS: list[int] = [190, 230]
 
