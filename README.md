@@ -2,7 +2,7 @@
 
 [![Static Badge](https://img.shields.io/badge/Telegram-Chat-yes?style=for-the-badge&logo=Telegram&logoColor=white&logoSize=auto&color=blue)](https://t.me/hidden_codding_chat)
 
-[![Static Badge](https://img.shields.io/badge/Telegram-Bot%20Link-Link?style=for-the-badge&logo=Telegram&logoColor=white&logoSize=auto&color=blue)](https://t.me/BlumCryptoBot/app?startapp=ref_QwD3tLsY8f)
+[![Static Badge](https://img.shields.io/badge/Telegram-Bot%20Link-Link?style=for-the-badge&logo=Telegram&logoColor=white&logoSize=auto&color=blue)](https://t.me/blum/app?startapp=ref_WyOWiiqWa4)
 
 ## Recommendation before use
 
@@ -26,7 +26,7 @@ _Script searches for session files in the following folders:_
 * /session/telethon
 
 
-## [Settings](https://github.com/HiddenCodeDevs/BlumTelegramBot/blob/main/.env-example/)
+## [Settings](https://github.com/SP-l33t/Blum-Telethon/blob/main/.env-example/)
 |          Settings           |                                                                                                                  Description                                                                                                                  |
 |:---------------------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
 |    **API_ID / API_HASH**    |                                                                                   Platform data from which to run the Telegram session (default - android)                                                                                    |
@@ -59,10 +59,10 @@ Before you begin, make sure you have the following installed:
 3. Record the API_ID and API_HASH provided after registering your application in the .env file.
 
 ## Installation
-You can download the [**repository**](https://github.com/HiddenCodeDevs/BlumTelegramBot) by cloning it to your system and installing the necessary dependencies:
+You can download the [**repository**](https://github.com/SP-l33t/Blum-Telethon) by cloning it to your system and installing the necessary dependencies:
 ```shell
-git clone https://github.com/HiddenCodeDevs/BlumTelegramBot.git
-cd BlumTelegramBot
+git clone https://github.com/SP-l33t/Blum-Telethon.git
+cd Blum-Telethon
 ```
 
 Then you can do automatic installation by typing:
@@ -90,9 +90,9 @@ python3 main.py
 
 You can also use arguments for quick start, for example:
 ```shell
-~/BlumTelegramBot >>> python3 main.py --action (1/2)
+~/Blum-Telethon >>> python3 main.py --action (1/2)
 # Or
-~/BlumTelegramBot >>> python3 main.py -a (1/2)
+~/Blum-Telethon >>> python3 main.py -a (1/2)
 
 # 1 - Run clicker
 # 2 - Creates a session
@@ -110,18 +110,13 @@ python main.py
 
 You can also use arguments for quick start, for example:
 ```shell
-~/BlumTelegramBot >>> python main.py --action (1/2)
+~/Blum-Telethon >>> python main.py --action (1/2)
 # Or
-~/BlumTelegramBot >>> python main.py -a (1/2)
+~/Blum-Telethon >>> python main.py -a (1/2)
 
 # 1 - Run clicker
 # 2 - Creates a session
 ```
 
-
-
-
-### Contacts
-
-For support or questions, contact me on Telegram: 
-[![Static Badge](https://img.shields.io/badge/telegram-bot_author-link?style=for-the-badge&logo=telegram&logoColor=white&logoSize=auto&color=blue)](https://t.me/unknxwnplxya)
+# Credits:
+Thanks to [sanjithacks](https://github.com/sanjithacks) for help with Blum payload encryption

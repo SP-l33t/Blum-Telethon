@@ -2,7 +2,7 @@
 
 [![Static Badge](https://img.shields.io/badge/Телеграм-Наш_чат-Link?style=for-the-badge&logo=Telegram&logoColor=white&logoSize=auto&color=blue)](https://t.me/hidden_codding_chat)
 
-[![Static Badge](https://img.shields.io/badge/Телеграм-Ссылка_на_бота-Link?style=for-the-badge&logo=Telegram&logoColor=white&logoSize=auto&color=blue)](https://t.me/BlumCryptoBot/app?startapp=ref_QwD3tLsY8f)
+[![Static Badge](https://img.shields.io/badge/Телеграм-Ссылка_на_бота-Link?style=for-the-badge&logo=Telegram&logoColor=white&logoSize=auto&color=blue)](https://t.me/blum/app?startapp=ref_WyOWiiqWa4)
 
 ## Рекомендация перед использованием
 
@@ -26,7 +26,7 @@ _Скрипт осуществляет поиск файлов сессий в �
 * /session/telethon
 
 
-## [Настройки](https://github.com/HiddenCodeDevs/BlumTelegramBot/blob/main/.env-example/)
+## [Настройки](https://github.com/SP-l33t/Blum-Telethon/blob/main/.env-example/)
 |          Настройки          |                                                                                                                              Описание                                                                                                                               |
 |:---------------------------:|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------:|
 |    **API_ID / API_HASH**    |                                                                                         Данные платформы, с которой будет запущена сессия Telegram (по умолчанию - android)                                                                                         |
@@ -59,10 +59,10 @@ _Скрипт осуществляет поиск файлов сессий в �
 3. Запишите `API_ID` и `API_HASH` в файле `.env`, предоставленные после регистрации вашего приложения.
 
 ## Установка
-Вы можете скачать [**Репозиторий**](https://github.com/HiddenCodeDevs/BlumTelegramBot) клонированием на вашу систему и установкой необходимых зависимостей:
+Вы можете скачать [**Репозиторий**](https://github.com/SP-l33t/Blum-Telethon) клонированием на вашу систему и установкой необходимых зависимостей:
 ```shell
-git clone https://github.com/HiddenCodeDevs/BlumTelegramBot.git
-cd BlumTelegramBot
+git clone https://github.com/SP-l33t/Blum-Telethon.git
+cd Blum-Telethon
 ```
 
 Затем для автоматической установки введите:
@@ -90,9 +90,9 @@ python3 main.py
 
 Также для быстрого запуска вы можете использовать аргументы, например:
 ```shell
-~/BlumTelegramBot >>> python3 main.py --action (1/2)
+~/Blum-Telethon >>> python3 main.py --action (1/2)
 # Or
-~/BlumTelegramBot >>> python3 main.py -a (1/2)
+~/Blum-Telethon >>> python3 main.py -a (1/2)
 
 # 1 - Запускает кликер
 # 2 - Создает сессию
@@ -111,9 +111,9 @@ python main.py
 
 Также для быстрого запуска вы можете использовать аргументы, например:
 ```shell
-~/BlumTelegramBot >>> python main.py --action (1/2)
+~/Blum-Telethon >>> python main.py --action (1/2)
 # Или
-~/BlumTelegramBot >>> python main.py -a (1/2)
+~/Blum-Telethon >>> python main.py -a (1/2)
 
 # 1 - Запускает кликер
 # 2 - Создает сессию
@@ -122,8 +122,5 @@ python main.py
 
 
 
-### Контакты
-
-Для поддержки или вопросов, свяжитесь со мной в Telegram:
-
-[![Static Badge](https://img.shields.io/badge/Телеграм-автор_бота-link?style=for-the-badge&logo=telegram&logoColor=white&logoSize=auto&color=blue)](https://t.me/unknxwnplxya)
+### Благодарность:
+Спасибо [sanjithacks](https://github.com/sanjithacks) за помощь с локальным шифрованием для игр.
