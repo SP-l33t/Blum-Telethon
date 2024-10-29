@@ -10,16 +10,18 @@ class Settings(BaseSettings):
 
     FIX_CERT: bool = False
 
+    TRACK_BOT_UPDATES: bool = True
+
     JOIN_TRIBE: str = "6361f86f-6a55-4b6b-b2bd-f73e79e09e38"
     PLAY_GAMES: bool = True
+    GAMES_PER_CYCLE: list[int] = [5, 20]
     LOCAL_PAYLOAD: bool = False
     PAYLOAD_API_KEY: str = ""
     POINTS: list[int] = [190, 230]
 
     PERFORM_TASKS: bool = False
 
-    USE_RANDOM_DELAY_IN_RUN: bool = True
-    RANDOM_DELAY_IN_RUN: list[int] = [5, 30]
+    SESSION_START_DELAY: int = 360
 
     REF_ID: str = ''
 

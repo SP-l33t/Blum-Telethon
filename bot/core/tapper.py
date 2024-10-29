@@ -194,6 +194,7 @@ class Tapper:
             resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/validate', json=payload)
             resp.raise_for_status()
             resp_json = await resp.json()
+            await asyncio.sleep(uniform(5, 20))
             is_finished = False
             if resp_json.get('status') == "READY_FOR_CLAIM":
                 is_finished = await self.claim_task(http_client, task_id)
@@ -201,7 +202,7 @@ class Tapper:
             return is_finished
 
         except Exception as error:
-            log_error(self.log_message(f"Claim task error {error}"))
+            log_error(self.log_message(f"Validate task error {error}"))
 
     async def join_tribe(self, http_client: CloudflareScraper):
         if settings.JOIN_TRIBE:
@@ -215,10 +216,14 @@ class Tapper:
 
     async def get_tasks(self, http_client: CloudflareScraper):
         try:
+            err_count = 0
             while True:
                 resp = await http_client.get(f'{self.earn_domain}/api/v1/tasks')
                 if resp.status not in [200, 201]:
                     await asyncio.sleep(uniform(3, 5))
+                    err_count += 1
+                    if err_count >= 3:
+                        return []
                     continue
                 else:
                     break
@@ -234,9 +239,10 @@ class Tapper:
                         if sub_tasks:
                             for sub_task in sub_tasks:
                                 collected_tasks.append(sub_task)
-                        if task.get('type') != 'PARTNER_INTEGRATION':
-                            collected_tasks.append(task)
-                        if task.get('type') == 'PARTNER_INTEGRATION' and task.get('reward'):
+                            continue
+                        if task.get('type') != 'PARTNER_INTEGRATION' or \
+                                (task.get('type') == 'PARTNER_INTEGRATION' and task.get('reward'))\
+                                and task not in collected_tasks:
                             collected_tasks.append(task)
 
                 if task_group.get('sectionType') == 'WEEKLY_ROUTINE':
@@ -244,19 +250,28 @@ class Tapper:
                     for task in tasks_list:
                         sub_tasks = task.get('subTasks', [])
                         for sub_task in sub_tasks:
-                            collected_tasks.append(sub_task)
+                            if sub_task not in collected_tasks:
+                                collected_tasks.append(sub_task)
 
                 if task_group.get('sectionType') == "DEFAULT":
-                    sub_tasks = task_group.get('subSections', [])
-                    for sub_task in sub_tasks:
-                        tasks = sub_task.get('tasks', [])
+                    sub_task_sections = task_group.get('subSections', [])
+                    for section in sub_task_sections:
+                        tasks = section.get('tasks', [])
                         for task_basic in tasks:
-                            collected_tasks.append(task_basic)
+                            if task_basic not in collected_tasks:
+                                collected_tasks.append(task_basic)
 
             return collected_tasks
+
         except Exception as error:
-            log_error(self.log_message(f"Get tasks error {error}"))
+            log_error(self.log_message(f"Error while getting tasks: {error}"))
             return []
+
+    async def get_task_lists(self, http_client: CloudflareScraper):
+        response = await http_client.get('https://github.com/SP-l33t/Auxiliary-Data/raw/refs/heads/main/blum_tasks.json')
+        if response.status in range(200, 300):
+            return json.loads(await response.text())
+        return {}
 
     async def play_game(self, http_client: CloudflareScraper, play_passes):
         api_key = settings.PAYLOAD_API_KEY
@@ -266,18 +281,18 @@ class Tapper:
         try:
             total_games = 0
             tries = 3
-            max_games = randint(5, 20)
+            max_games = randint(settings.GAMES_PER_CYCLE[0], settings.GAMES_PER_CYCLE[1])
             data_elig = await self.elig_dogs(http_client=http_client)
 
             while play_passes and self.api_quota:
                 game_id = await self.start_game(http_client=http_client)
 
-                if not game_id or game_id == "cannot start game":
+                if not game_id:
                     logger.info(self.log_message(
                         f"Couldn't start play in game! play_passes: {play_passes}, trying again"))
                     tries -= 1
                     if tries == 0:
-                        logger.warning(self.log_message('No more trying, gonna skip games'))
+                        logger.warning(self.log_message('No more trying, skipping games'))
                         break
                     continue
 
@@ -312,13 +327,17 @@ class Tapper:
     async def start_game(self, http_client: CloudflareScraper):
         try:
             resp = await http_client.post(f"{self.game_url}/api/v2/game/play")
-            response_data = await resp.json()
-            if "gameId" in response_data:
-                return response_data.get("gameId")
-            elif "message" in response_data:
-                return response_data.get("message")
+            if "json" in resp.content_type:
+                response_data = await resp.json()
+                if "gameId" in response_data:
+                    return response_data.get("gameId")
+
+            logger.error(self.log_message(f"Error occurred during start game: {resp.status}. {await resp.text()}"))
+            return None
+
         except Exception as e:
             log_error(self.log_message(f"Error occurred during start game: {e}"))
+            return None
 
     async def elig_dogs(self, http_client: CloudflareScraper):
         try:
@@ -484,10 +503,9 @@ class Tapper:
         return resp_json.get('access'), resp_json.get('refresh')
 
     async def run(self) -> None:
-        if settings.USE_RANDOM_DELAY_IN_RUN:
-            random_delay = uniform(settings.RANDOM_DELAY_IN_RUN[0], settings.RANDOM_DELAY_IN_RUN[1])
-            logger.info(self.log_message(f"Bot will start in <ly>{int(random_delay)}s</ly>"))
-            await asyncio.sleep(random_delay)
+        random_delay = uniform(1, settings.SESSION_START_DELAY)
+        logger.info(self.log_message(f"Bot will start in <ly>{int(random_delay)}s</ly>"))
+        await asyncio.sleep(random_delay)
 
         access_token = None
         refresh_token = None
@@ -555,50 +573,61 @@ class Tapper:
                     await self.join_tribe(http_client=http_client)
 
                     if settings.PERFORM_TASKS:
-                        tasks = await self.get_tasks(http_client=http_client)
+                        task_lists = await self.get_task_lists(http_client)
+                        tasks = await self.get_tasks(http_client)
                         err_count = 0
+                        shuffle(tasks)
                         for task in tasks:
-                            if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET":
-                                task_started = await self.start_task(http_client=http_client, task_id=task["id"])
+                            if err_count >= 3:
+                                logger.warning(self.log_message(
+                                    f"Failed to start 3 tasks in a row. Latest - '{task['title']}' Stop trying for now"))
+                                break
+
+                            if task.get('id') in task_lists.get('bl') and task.get('status') != 'NOT_STARTED':
+                                logger.warning(self.log_message(
+                                    f"Fake task is completed. Account is most likely flagged 😥"))
+                                continue
+                            if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET" \
+                                    and not task.get('isHidden') and task.get('id') in task_lists.get('wl'):
+                                task_started = await self.start_task(http_client, task["id"])
+                                await asyncio.sleep(uniform(1, 5))
                                 if task_started.status in range(200, 300):
                                     logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
+                                    err_count = 0
                                 else:
+                                    logger.warning(self.log_message(f"Failed to start task '{task}'"))
                                     err_count += 1
-                                    if err_count > 3:
-                                        logger.warning(self.log_message(
-                                            f"Failed to start 3 tasks. Latest - '{task['title']}' Stop trying for now"))
-                                        break
-                                await asyncio.sleep(uniform(1, 5))
 
                         await asyncio.sleep(5)
 
-                        tasks = await self.get_tasks(http_client=http_client)
+                        tasks = await self.get_tasks(http_client)
+                        shuffle(tasks)
                         for task in tasks:
-                            if task.get('status'):
+                            if task.get('status') and not task.get('isHidden') \
+                                    and task.get('id') in task_lists.get('wl'):
                                 if task['status'] == "READY_FOR_CLAIM" and task['type'] != 'PROGRESS_TASK':
-                                    status = await self.claim_task(http_client=http_client, task_id=task["id"])
-                                    if status:
+                                    if await self.claim_task(http_client, task["id"]):
                                         logger.success(self.log_message(f"Claimed task - '{task['title']}'"))
                                     await asyncio.sleep(uniform(1, 2))
                                 elif task['status'] == "READY_FOR_VERIFY" and task['validationType'] == 'KEYWORD':
-                                    status = await self.validate_task(http_client=http_client, task_id=task["id"])
-
-                                    if status:
-                                        logger.success(self.log_message(f"Validated task - '{task['title']}'"))
+                                    if await self.validate_task(http_client, task["id"]):
+                                        logger.success(self.log_message(
+                                            f"Successfully validated and claimed {task['title']}"))
+                                        await asyncio.sleep(uniform(1, 2))
 
                     try:
-                        timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client=http_client)
+                        timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client)
 
                         if start_time and end_time and timestamp and timestamp >= end_time:
                             timestamp, balance = await self.claim(http_client=http_client)
                             logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
-                            timestamp, start_time, end_time, play_passes, balanc = await self.balance(http_client=http_client)
+                            timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client)
 
                         if not start_time and not end_time:
                             await self.start_farming(http_client=http_client)
                             logger.info(self.log_message(f"<lc>[FARMING]</lc> Start farming!"))
                             await asyncio.sleep(uniform(3, 5))
-                            timestamp, start_time, end_time, play_passes, balanc = await self.balance(http_client=http_client)
+                            timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client)
 
                         if end_time and timestamp and timestamp < end_time:
                             sleep_duration = (end_time - timestamp) * uniform(1.0, 1.1)
