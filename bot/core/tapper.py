@@ -332,7 +332,7 @@ class Tapper:
                 if "gameId" in response_data:
                     return response_data.get("gameId")
 
-            logger.error(self.log_message(f"Error occurred during start game: {resp.status}. {await resp.text()}"))
+            logger.error(self.log_message(f"Error occurred during start game: {resp.status}."))
             return None
 
         except Exception as e:
