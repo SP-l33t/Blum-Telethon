@@ -42,28 +42,29 @@ async def get_js_hash(path):
 
 
 async def check_base_url():
-    main_js_formats = await get_main_js_format(appUrl)
-    if main_js_formats:
-        last_actual_files = await get_versions('blum')
-        last_actual_js = last_actual_files.get('main_js')
-        last_actual_hash = last_actual_files.get('js_hash')
-        for js in main_js_formats:
-            if last_actual_js in js:
-                live_hash = await get_js_hash(js)
-                if live_hash == last_actual_hash:
-                    logger.success(f"No changes in main js file: <green>{last_actual_js}</green>")
-                    return True
-            else:
-                logger.error(f"Main JS updated. New file name: <lr>'{js}'</lr>. Hash: '<lr>{await get_js_hash(js)}</lr>'")
-                return False
-    else:
-        logger.error("<lr>No main js file found. Can't continue</lr>")
-        return False
+    if settings.TRACK_BOT_UPDATES:
+        main_js_formats = await get_main_js_format(appUrl)
+        if main_js_formats:
+            last_actual_files = await get_versions('blum')
+            last_actual_js = last_actual_files.get('main_js')
+            last_actual_hash = last_actual_files.get('js_hash')
+            for js in main_js_formats:
+                if last_actual_js in js:
+                    live_hash = await get_js_hash(js)
+                    if live_hash == last_actual_hash:
+                        logger.success(f"No changes in main js file: <green>{last_actual_js}</green>")
+                        return True
+                else:
+                    logger.error(f"Main JS updated. New file name: <lr>'{js}'</lr>. Hash: '<lr>{await get_js_hash(js)}</lr>'")
+                    sys.exit("Bot updates detected. Contact me to check if it's safe to continue: https://t.me/SP_l33t")
+
+        else:
+            logger.error("<lr>No main js file found. Can't continue</lr>")
+            sys.exit("No main js file found. Contact me to check if it's safe to continue: https://t.me/SP_l33t")
 
 
 async def check_bot_update_loop(start_delay: 0):
     await asyncio.sleep(start_delay)
     while settings.TRACK_BOT_UPDATES:
-        if not(await check_base_url()):
-            sys.exit("Bot updates detected. Contact me to check if it's safe to continue: https://t.me/SP_l33t")
+        await check_base_url()
         await asyncio.sleep(uniform(1500, 2000))
