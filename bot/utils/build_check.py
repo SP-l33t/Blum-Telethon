@@ -55,7 +55,8 @@ async def check_base_url():
                         logger.success(f"No changes in main js file: <green>{last_actual_js}</green>")
                         return True
                 else:
-                    logger.error(f"Main JS updated. New file name: <lr>'{js}'</lr>. Hash: '<lr>{await get_js_hash(js)}</lr>'")
+                    logger.error(f"Main JS updated. New file name: <lr>'{js}'</lr>. "
+                                 f"Hash: '<lr>{await get_js_hash(js)}</lr>'. Old hash: <lg>{last_actual_hash}</lg>")
                     sys.exit("Bot updates detected. Contact me to check if it's safe to continue: https://t.me/SP_l33t")
 
         else:

@@ -17,6 +17,14 @@ from bot.config import settings
 from bot.utils import logger, log_error, config_utils, CONFIG_PATH, first_run, payload
 from bot.exceptions import InvalidSession
 
+GATEWAY = "https://gateway.blum.codes"
+GAME = "https://game-domain.blum.codes"
+WALLET = "https://wallet-domain.blum.codes"
+SUBSCRIPTION = "https://subscription.blum.codes"
+TRIBE = "https://tribe-domain.blum.codes"
+USER = "https://user-domain.blum.codes"
+EARN = "https://earn-domain.blum.codes"
+
 
 class Tapper:
     def __init__(self, tg_client: UniversalTelegramClient):
@@ -42,14 +50,6 @@ class Tapper:
         self.user_data = None
         self.start_param = None
         self.blum_data = None
-
-        self.gateway_url = "https://gateway.blum.codes"
-        self.game_url = "https://game-domain.blum.codes"
-        self.wallet_url = "https://wallet-domain.blum.codes"
-        self.subscription_url = "https://subscription.blum.codes"
-        self.tribe_url = "https://tribe-domain.blum.codes"
-        self.user_url = "https://user-domain.blum.codes"
-        self.earn_domain = "https://earn-domain.blum.codes"
 
         self.api_quota = 99999
 
@@ -83,14 +83,14 @@ class Tapper:
 
     async def login(self, http_client: CloudflareScraper, initdata):
         try:
-            await http_client.options(url=f'{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP')
+            await http_client.options(url=f'{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP')
             while True:
                 json_data = {"query": initdata} if not self.start_param else \
                     {"query": initdata, "username": self.user_data.get('username'),
                      "referralToken": self.start_param.split('_')[1]}
 
                 resp = await http_client.post(
-                    f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
+                    f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
                 if resp.status == 520:
                     logger.warning(self.log_message('Relogin'))
                     await asyncio.sleep(delay=3)
@@ -112,7 +112,7 @@ class Tapper:
                                      "referralToken": self.start_param.split('_')[1]}
 
                         resp = await http_client.post(
-                            f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP",
+                            f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP",
                             json=json_data)
                         if resp.status == 520:
                             logger.warning(self.log_message('Relogin'))
@@ -129,7 +129,7 @@ class Tapper:
 
                             json_data = {"query": initdata}
                             resp = await http_client.post(
-                                f"{self.user_url}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
+                                f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
                             if resp.status == 520:
                                 logger.warning((self.log_message('Relogin')))
                                 await asyncio.sleep(delay=3)
@@ -147,7 +147,7 @@ class Tapper:
                 elif 'account is already connected to another user' in resp_json.get("message", "").lower():
 
                     json_data = {"query": initdata}
-                    resp = await http_client.post(f"{self.user_url}/api/v1/auth/provider"
+                    resp = await http_client.post(f"{USER}/api/v1/auth/provider"
                                                   "/PROVIDER_TELEGRAM_MINI_APP",
                                                   json=json_data)
                     if resp.status == 520:
@@ -170,7 +170,7 @@ class Tapper:
 
     async def claim_task(self, http_client: CloudflareScraper, task_id):
         try:
-            resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/claim')
+            resp = await http_client.post(f'{EARN}/api/v1/tasks/{task_id}/claim')
             resp_json = await resp.json()
 
             return resp_json.get('status') == "FINISHED"
@@ -179,7 +179,7 @@ class Tapper:
 
     async def start_task(self, http_client: CloudflareScraper, task_id):
         try:
-            return await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/start')
+            return await http_client.post(f'{EARN}/api/v1/tasks/{task_id}/start')
         except Exception as error:
             log_error(self.log_message(f"Failed to start a task: {error}"))
 
@@ -191,7 +191,7 @@ class Tapper:
 
             payload = {'keyword': keyword[0]}
 
-            resp = await http_client.post(f'{self.earn_domain}/api/v1/tasks/{task_id}/validate', json=payload)
+            resp = await http_client.post(f'{EARN}/api/v1/tasks/{task_id}/validate', json=payload)
             resp.raise_for_status()
             resp_json = await resp.json()
             await asyncio.sleep(uniform(5, 20))
@@ -207,7 +207,7 @@ class Tapper:
     async def join_tribe(self, http_client: CloudflareScraper):
         if settings.JOIN_TRIBE:
             try:
-                resp = await http_client.post(f'{self.tribe_url}/api/v1/tribe/{settings.JOIN_TRIBE}/join')
+                resp = await http_client.post(f'{TRIBE}/api/v1/tribe/{settings.JOIN_TRIBE}/join')
                 text = await resp.text()
                 if text == 'OK':
                     logger.success(self.log_message('Joined tribe'))
@@ -218,7 +218,7 @@ class Tapper:
         try:
             err_count = 0
             while True:
-                resp = await http_client.get(f'{self.earn_domain}/api/v1/tasks')
+                resp = await http_client.get(f'{EARN}/api/v1/tasks')
                 if resp.status not in [200, 201]:
                     await asyncio.sleep(uniform(3, 5))
                     err_count += 1
@@ -267,7 +267,8 @@ class Tapper:
             log_error(self.log_message(f"Error while getting tasks: {error}"))
             return []
 
-    async def get_task_lists(self, http_client: CloudflareScraper):
+    @staticmethod
+    async def get_task_lists(http_client: CloudflareScraper):
         response = await http_client.get('https://github.com/SP-l33t/Auxiliary-Data/raw/refs/heads/main/blum_tasks.json')
         if response.status in range(200, 300):
             return json.loads(await response.text())
@@ -326,7 +327,7 @@ class Tapper:
 
     async def start_game(self, http_client: CloudflareScraper):
         try:
-            resp = await http_client.post(f"{self.game_url}/api/v2/game/play")
+            resp = await http_client.post(f"{GAME}/api/v2/game/play")
             if "json" in resp.content_type:
                 response_data = await resp.json()
                 if "gameId" in response_data:
@@ -341,7 +342,7 @@ class Tapper:
 
     async def elig_dogs(self, http_client: CloudflareScraper):
         try:
-            resp = await http_client.get(f'{self.game_url}/api/v2/game/eligibility/dogs_drop')
+            resp = await http_client.get(f'{GAME}/api/v2/game/eligibility/dogs_drop')
             if resp is not None:
                 data = await resp.json()
                 eligible = data.get('eligible', False)
@@ -390,9 +391,9 @@ class Tapper:
             if not data:
                 return None
 
-            resp = await http_client.post(f"{self.game_url}/api/v2/game/claim", json={'payload': data})
+            resp = await http_client.post(f"{GAME}/api/v2/game/claim", json={'payload': data})
             if resp.status != 200:
-                resp = await http_client.post(f"{self.game_url}/api/v2/game/claim", json={'payload': data})
+                resp = await http_client.post(f"{GAME}/api/v2/game/claim", json={'payload': data})
 
             txt = await resp.text()
 
@@ -403,7 +404,7 @@ class Tapper:
     async def claim(self, http_client: CloudflareScraper):
         try:
             while True:
-                resp = await http_client.post(f"{self.game_url}/api/v1/farming/claim")
+                resp = await http_client.post(f"{GAME}/api/v1/farming/claim")
                 if resp.status not in [200, 201]:
                     await asyncio.sleep(uniform(3, 5))
                     continue
@@ -418,17 +419,17 @@ class Tapper:
 
     async def start_farming(self, http_client: CloudflareScraper):
         try:
-            resp = await http_client.post(f"{self.game_url}/api/v1/farming/start")
+            resp = await http_client.post(f"{GAME}/api/v1/farming/start")
 
             if resp.status != 200:
-                resp = await http_client.post(f"{self.game_url}/api/v1/farming/start")
+                resp = await http_client.post(f"{GAME}/api/v1/farming/start")
         except Exception as e:
             log_error(self.log_message(f"Error occurred during start: {e}"))
 
     async def friend_balance(self, http_client: CloudflareScraper):
         try:
             while True:
-                resp = await http_client.get(f"{self.user_url}/api/v1/friends/balance")
+                resp = await http_client.get(f"{USER}/api/v1/friends/balance")
                 if resp.status not in [200, 201]:
                     await asyncio.sleep(uniform(0.2, 1))
                     continue
@@ -448,11 +449,11 @@ class Tapper:
     async def friend_claim(self, http_client: CloudflareScraper):
         try:
 
-            resp = await http_client.post(f"{self.user_url}/api/v1/friends/claim")
+            resp = await http_client.post(f"{USER}/api/v1/friends/claim")
             resp_json = await resp.json()
             amount = resp_json.get("claimBalance")
             if resp.status != 200:
-                resp = await http_client.post(f"{self.user_url}/api/v1/friends/claim")
+                resp = await http_client.post(f"{USER}/api/v1/friends/claim")
                 resp_json = await resp.json()
                 amount = resp_json.get("claimBalance")
 
@@ -462,7 +463,7 @@ class Tapper:
 
     async def balance(self, http_client: CloudflareScraper):
         try:
-            resp = await http_client.get(f"{self.game_url}/api/v1/user/balance")
+            resp = await http_client.get(f"{GAME}/api/v1/user/balance")
             resp_json = await resp.json()
 
             timestamp = resp_json.get("timestamp")
@@ -485,22 +486,31 @@ class Tapper:
             log_error(self.log_message(f"Error occurred during balance: {e}"))
 
     async def claim_daily_reward(self, http_client: CloudflareScraper):
-        try:
-            resp = await http_client.post(f"{self.game_url}/api/v1/daily-reward?offset=-180")
-            txt = await resp.text()
-            await asyncio.sleep(uniform(1, 2))
-            return True if txt == 'OK' else txt
-        except Exception as e:
-            log_error(self.log_message(f"Error occurred during claim daily reward: {e}"))
+        resp = await http_client.get(f"{GAME}/api/v1/daily-reward?offset=-180")
+        if resp.status in range(200, 300) and 'json' in resp.content_type:
+            reward = (await resp.json()).get('days', [{}])[-1].get('reward', {})
+            try:
+                resp = await http_client.post(f"{GAME}/api/v1/daily-reward?offset=-180")
+                txt = await resp.text()
+                await asyncio.sleep(uniform(1, 2))
+                return reward if txt == 'OK' else None
+            except Exception as e:
+                log_error(self.log_message(f"Error occurred during claim daily reward: {e}"))
 
     async def refresh_token(self, http_client: CloudflareScraper, token):
         if "Authorization" in http_client.headers:
             del http_client.headers["Authorization"]
         json_data = {'refresh': token}
-        resp = await http_client.post(f"{self.user_url}/api/v1/auth/refresh", json=json_data)
+        resp = await http_client.post(f"{USER}/api/v1/auth/refresh", json=json_data)
         resp_json = await resp.json()
 
         return resp_json.get('access'), resp_json.get('refresh')
+
+    @staticmethod
+    async def get_time_now(http_client: CloudflareScraper):
+        resp = await http_client.get(f"{GAME}/api/v1/time/now")
+        if 'json' in resp.content_type:
+            return await resp.json()
 
     async def run(self) -> None:
         random_delay = uniform(1, settings.SESSION_START_DELAY)
@@ -553,9 +563,13 @@ class Tapper:
 
                     await self.balance(http_client=http_client)
 
-                    msg = await self.claim_daily_reward(http_client=http_client)
-                    if msg is True:
-                        logger.success(self.log_message(f"Claimed daily reward!"))
+                    await self.get_time_now(http_client)
+
+                    daily_reward = await self.claim_daily_reward(http_client=http_client)
+                    if daily_reward:
+                        logger.success(self.log_message(
+                            f"Claimed daily reward! Got <lg>{daily_reward.get('points')}</lg> points & "
+                            f"<lg>{daily_reward.get('passes')}</lg> passes"))
 
                     timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client=http_client)
 
