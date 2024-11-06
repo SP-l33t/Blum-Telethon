@@ -581,8 +581,9 @@ class Tapper:
                         amount = await self.friend_claim(http_client=http_client)
                         logger.success(self.log_message(f"Claimed friend ref reward {amount}"))
 
-                    if play_passes and play_passes > 0 and settings.PLAY_GAMES:
-                        await self.play_game(http_client=http_client, play_passes=play_passes)
+                    # TODO FIX
+                    # if play_passes and play_passes > 0 and settings.PLAY_GAMES:
+                    #     await self.play_game(http_client=http_client, play_passes=play_passes)
 
                     await self.join_tribe(http_client=http_client)
 
