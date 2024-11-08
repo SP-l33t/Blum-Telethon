@@ -153,7 +153,7 @@ async def init_config_file():
 async def run_tasks():
     await config_utils.restructure_config(CONFIG_PATH)
     await init_config_file()
-    settings.LOCAL_PAYLOAD = bool(await payload.create_payload_local("174188e6-3d28-4437-a724-3d0aeefade7f", 121, 2.3)) if settings.LOCAL_PAYLOAD else False
+    settings.LOCAL_PAYLOAD = bool(await payload.create_payload_local("174188e6-3d28-4437-a724-3d0aeefade7f", 121, 3)) if settings.LOCAL_PAYLOAD else False
     await build_check.check_base_url()
     tg_clients = await get_tg_clients()
     tasks = [asyncio.create_task(run_tapper(tg_client=tg_client)) for tg_client in tg_clients]

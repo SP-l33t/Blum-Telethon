@@ -3,8 +3,8 @@ import json
 from bot.utils import logger
 
 
-async def create_payload_local(game_id: str, points, dogs=0):
-    command = ['node', './index.js', game_id, str(points), str(dogs)]
+async def create_payload_local(game_id: str, clover, freeze, dogs=0):
+    command = ['node', './index.js', game_id, str(clover), str(freeze), str(dogs)]
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True, cwd="./bot/utils/payload/")
         output = json.loads(result.stdout.strip())

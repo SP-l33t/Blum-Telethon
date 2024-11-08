@@ -25,6 +25,7 @@ TRIBE = "https://tribe-domain.blum.codes"
 USER = "https://user-domain.blum.codes"
 EARN = "https://earn-domain.blum.codes"
 
+GAME_ASSETS = ['BOMB', 'CLOVER', 'FREEZE']
 
 class Tapper:
     def __init__(self, tg_client: UniversalTelegramClient):
@@ -283,9 +284,13 @@ class Tapper:
             total_games = 0
             tries = 3
             max_games = randint(settings.GAMES_PER_CYCLE[0], settings.GAMES_PER_CYCLE[1])
-            data_elig = await self.elig_dogs(http_client=http_client)
+            # data_elig = await self.elig_dogs(http_client=http_client)
 
             while play_passes and self.api_quota:
+                if total_games >= max_games:
+                    logger.info(self.log_message(f"Played {total_games}. Enough for now"))
+                    return
+
                 game_id = await self.start_game(http_client=http_client)
 
                 if not game_id:
@@ -297,20 +302,14 @@ class Tapper:
                         break
                     continue
 
-                if total_games >= max_games:
-                    logger.info(self.log_message(f"Played {total_games}. Enough for now"))
-                    return
-
                 total_games += 1
                 logger.success(self.log_message("Started playing game"))
 
-                await asyncio.sleep(uniform(30, 40))
-
-                if data_elig:
-                    dogs = randint(3, 25)
-                    msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=dogs)
-                else:
-                    msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=0)
+                # if data_elig:
+                #     dogs = randint(3, 25)
+                #     msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=dogs)
+                # else:
+                msg, points = await self.claim_game(game_id=game_id, http_client=http_client)
 
                 if isinstance(msg, bool) and msg:
                     logger.info(self.log_message(f"Finished playing game! Reward: <ly>{points}</ly>"))
@@ -328,9 +327,12 @@ class Tapper:
     async def start_game(self, http_client: CloudflareScraper):
         try:
             resp = await http_client.post(f"{GAME}/api/v2/game/play")
-            if "json" in resp.content_type:
+            if resp.status in range(200, 300):
                 response_data = await resp.json()
                 if "gameId" in response_data:
+                    assets = response_data.get("assets")
+                    if len(assets) != len(GAME_ASSETS) or [x for x in assets if x not in GAME_ASSETS]:
+                        logger.warning(self.log_message('Game Structure has changed'))
                     return response_data.get("gameId")
 
             logger.error(self.log_message(f"Error occurred during start game: {resp.status}."))
@@ -378,18 +380,20 @@ class Tapper:
             logger.warning(self.log_message(f"Failed to create payload from server {server['url']}"))
         return None
 
-    async def claim_game(self, game_id: str, dogs, http_client: CloudflareScraper):
+    async def claim_game(self, game_id: str, http_client: CloudflareScraper):
         try:
-            points = randint(settings.POINTS[0], settings.POINTS[1]) - dogs
-            dogs = round(dogs / 10, 1) if dogs else 0
+            points = randint(settings.POINTS[0], settings.POINTS[1])
 
-            if settings.LOCAL_PAYLOAD:
-                data = (await payload.create_payload_local(game_id=game_id, points=points, dogs=dogs)).get('payload')
-            else:
-                data = await self.create_payload(http_client=http_client, game_id=game_id, points=points, dogs=dogs)
+            # if settings.LOCAL_PAYLOAD:
+            freeze = randint(0, 5)
+            data = (await payload.create_payload_local(game_id=game_id, clover=points, freeze=freeze)).get('payload')
+            # else:
+            #     data = await self.create_payload(http_client=http_client, game_id=game_id, points=points, dogs=dogs)
 
             if not data:
                 return None
+
+            await asyncio.sleep(30 + freeze * 3)
 
             resp = await http_client.post(f"{GAME}/api/v2/game/claim", json={'payload': data})
             if resp.status != 200:
@@ -581,9 +585,8 @@ class Tapper:
                         amount = await self.friend_claim(http_client=http_client)
                         logger.success(self.log_message(f"Claimed friend ref reward {amount}"))
 
-                    # TODO FIX
-                    # if play_passes and play_passes > 0 and settings.PLAY_GAMES:
-                    #     await self.play_game(http_client=http_client, play_passes=play_passes)
+                    if play_passes and play_passes > 0 and settings.PLAY_GAMES:
+                        await self.play_game(http_client=http_client, play_passes=play_passes)
 
                     await self.join_tribe(http_client=http_client)
 
@@ -635,7 +638,7 @@ class Tapper:
 
                         if start_time and end_time and timestamp and timestamp >= end_time:
                             timestamp, balance = await self.claim(http_client=http_client)
-                            logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: {balance}"))
+                            logger.success(self.log_message(f"<lc>[FARMING]</lc> Claimed reward! Balance: <lg>{balance}</lg>"))
                             timestamp, start_time, end_time, play_passes, balance = await self.balance(http_client)
 
                         if not start_time and not end_time:
@@ -646,7 +649,7 @@ class Tapper:
 
                         if end_time and timestamp and timestamp < end_time:
                             sleep_duration = (end_time - timestamp) * uniform(1.0, 1.1)
-                            logger.info(self.log_message(f"<lc>[FARMING]</lc> Sleep {format_duration(sleep_duration)}"))
+                            logger.info(self.log_message(f"<lc>[FARMING]</lc> Sleep <lc>{format_duration(sleep_duration)}</lc>"))
                             login_need = True
                             await asyncio.sleep(sleep_duration)
 
