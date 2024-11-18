@@ -38,9 +38,11 @@ async def register_sessions() -> None:
         )
     accounts_config = config_utils.read_config_file(CONFIG_PATH)
     accounts_data = {
-        'api_id': API_ID,
-        'api_hash': API_HASH,
-        **device_params
+        "api": {
+            'api_id': API_ID,
+            'api_hash': API_HASH,
+            **device_params
+        }
     }
     proxy = None
 

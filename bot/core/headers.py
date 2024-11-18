@@ -5,7 +5,6 @@ headers = {
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'ru-RU,ru;q=0.9',
     'Connection': 'keep-alive',
-    'Content-Type': 'application/json',
     'Origin': 'https://telegram.blum.codes',
     'Sec-Fetch-Dest': 'empty',
     'Sec-Fetch-Mode': 'cors',

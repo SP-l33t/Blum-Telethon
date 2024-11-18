@@ -87,24 +87,11 @@ class UniversalTelegramClient:
                     bot_id = InputUser(user_id=peer.user_id, access_hash=peer.access_hash)
                     input_bot_app = InputBotAppShortName(bot_id=bot_id, short_name=bot_shortname)
                     self._webview_data = {'peer': peer, 'app': input_bot_app} if bot_shortname \
-                        else {'peer': peer, 'bot': bot_username}
+                        else {'peer': peer, 'bot': peer}
                     return
                 except FloodWaitError as fl:
                     logger.warning(f"<ly>{self.session_name}</ly> | FloodWait {fl}. Waiting {fl.seconds}s")
                     await asyncio.sleep(fl.seconds + 3)
-
-    async def _pyrogram_initialize_webview_data(self, bot_username: str, bot_shortname: str = None):
-        if not self._webview_data:
-            while True:
-                try:
-                    peer = await self.client.resolve_peer(bot_username)
-                    input_bot_app = ptypes.InputBotAppShortName(bot_id=peer, short_name=bot_shortname)
-                    self._webview_data = {'peer': peer, 'app': input_bot_app} if bot_shortname \
-                        else {'peer': peer, 'bot': bot_username}
-                    return
-                except FloodWait as fl:
-                    logger.warning(f"<ly>{self.session_name}</ly> | FloodWait {fl}. Waiting {fl.value}s")
-                    await asyncio.sleep(fl.value + 3)
 
     async def _telethon_get_app_webview_url(self, bot_username: str, bot_shortname: str, default_val: str) -> str:
         if self.proxy and not self.client._proxy:
@@ -118,7 +105,7 @@ class UniversalTelegramClient:
                 await self._telethon_initialize_webview_data(bot_username=bot_username, bot_shortname=bot_shortname)
                 await asyncio.sleep(uniform(1, 2))
 
-                start = {'start_param': settings.REF_ID if randint(0, 100) <= 85 else default_val} if self.is_fist_run else {}
+                start = {'start_param': settings.REF_ID if randint(0, 100) <= 85 and settings.REF_ID else default_val} if self.is_fist_run else {}
 
                 web_view = await self.client(messages.RequestAppWebViewRequest(
                     **self._webview_data,
@@ -134,9 +121,8 @@ class UniversalTelegramClient:
             except (UserDeactivatedError, UserDeactivatedBanError, PhoneNumberBannedError):
                 raise InvalidSession(f"{self.session_name}: User is banned")
 
-            except Exception as error:
-                log_error(f"<ly>{self.session_name}</ly> | Unknown error during Authorization: {type(error).__name__}")
-                await asyncio.sleep(delay=3)
+            except Exception:
+                raise
 
             finally:
                 if self.client.is_connected():
@@ -155,18 +141,16 @@ class UniversalTelegramClient:
                 await self._telethon_initialize_webview_data(bot_username=bot_username)
                 await asyncio.sleep(uniform(1, 2))
 
-                start = {'start_param': settings.REF_ID if randint(0, 100) <= 85 else default_val} if self.is_fist_run else {}
+                start = {'start_param': settings.REF_ID if randint(0, 100) <= 85 and settings.REF_ID else default_val} if self.is_fist_run else {}
 
                 start_state = False
-                async for message in self.client.iter_messages('MMproBump_bot'):
+                async for message in self.client.iter_messages(bot_username):
                     if r'/start' in message.text:
                         start_state = True
                         break
                 await asyncio.sleep(uniform(0.5, 1))
                 if not start_state:
-                    await self.client(messages.StartBotRequest(bot=self._webview_data.get('peer'),
-                                                               peer=self._webview_data.get('peer'),
-                                                               **start))
+                    await self.client(messages.StartBotRequest(**self._webview_data, **start))
                 await asyncio.sleep(uniform(1, 2))
 
                 web_view = await self.client(messages.RequestWebViewRequest(
@@ -184,14 +168,26 @@ class UniversalTelegramClient:
             except (UserDeactivatedError, UserDeactivatedBanError, PhoneNumberBannedError):
                 raise InvalidSession(f"{self.session_name}: User is banned")
 
-            except Exception as error:
-                log_error(f"<ly>{self.session_name}</ly> | Unknown error during Authorization: {type(error).__name__}")
-                await asyncio.sleep(delay=3)
+            except Exception:
+                raise
 
             finally:
                 if self.client.is_connected():
                     await self.client.disconnect()
                     await asyncio.sleep(15)
+
+    async def _pyrogram_initialize_webview_data(self, bot_username: str, bot_shortname: str = None):
+        if not self._webview_data:
+            while True:
+                try:
+                    peer = await self.client.resolve_peer(bot_username)
+                    input_bot_app = ptypes.InputBotAppShortName(bot_id=peer, short_name=bot_shortname)
+                    self._webview_data = {'peer': peer, 'app': input_bot_app} if bot_shortname \
+                        else {'peer': peer, 'bot': peer}
+                    return
+                except FloodWait as fl:
+                    logger.warning(f"<ly>{self.session_name}</ly> | FloodWait {fl}. Waiting {fl.value}s")
+                    await asyncio.sleep(fl.value + 3)
 
     async def _pyrogram_get_app_webview_url(self, bot_username: str, bot_shortname: str, default_val: str) -> str:
         if self.proxy and not self.client.proxy:
@@ -205,7 +201,7 @@ class UniversalTelegramClient:
                 await self._pyrogram_initialize_webview_data(bot_username, bot_shortname)
                 await asyncio.sleep(uniform(1, 2))
 
-                start = {'start_param': settings.REF_ID if randint(0, 100) <= 85 else default_val} if self.is_fist_run else {}
+                start = {'start_param': settings.REF_ID if randint(0, 100) <= 85 and settings.REF_ID else default_val} if self.is_fist_run else {}
                 web_view = await self.client.invoke(pmessages.RequestAppWebView(
                     **self._webview_data,
                     platform='android',
@@ -220,9 +216,8 @@ class UniversalTelegramClient:
             except (UserDeactivated, UserDeactivatedBan, PhoneNumberBanned):
                 raise InvalidSession(f"{self.session_name}: User is banned")
 
-            except Exception as error:
-                log_error(f"<ly>{self.session_name}</ly> | Unknown error during Authorization: {type(error).__name__}")
-                await asyncio.sleep(delay=3)
+            except Exception:
+                raise
 
             finally:
                 if self.client.is_connected:
@@ -241,17 +236,16 @@ class UniversalTelegramClient:
                 await self._pyrogram_initialize_webview_data(bot_username)
                 await asyncio.sleep(uniform(1, 2))
 
-                start = {'start_param': settings.REF_ID if randint(0, 100) <= 85 else default_val} if self.is_fist_run else {}
+                start = {'start_param': settings.REF_ID if randint(0, 100) <= 85 and settings.REF_ID else default_val} if self.is_fist_run else {}
 
                 start_state = False
-                async for message in self.client.get_chat_history('MMproBump_bot'):
+                async for message in self.client.get_chat_history(bot_username):
                     if r'/start' in message.text:
                         start_state = True
                         break
                 await asyncio.sleep(uniform(0.5, 1))
                 if not start_state:
-                    await self.client.invoke(pmessages.StartBot(bot=self._webview_data.get('peer'),
-                                                                peer=self._webview_data.get('peer'),
+                    await self.client.invoke(pmessages.StartBot(**self._webview_data,
                                                                 random_id=randint(1, 2**63),
                                                                 **start))
                 await asyncio.sleep(uniform(1, 2))
@@ -270,9 +264,8 @@ class UniversalTelegramClient:
             except (UserDeactivated, UserDeactivatedBan, PhoneNumberBanned):
                 raise InvalidSession(f"{self.session_name}: User is banned")
 
-            except Exception as error:
-                log_error(f"<ly>{self.session_name}</ly> | Unknown error during Authorization: {type(error).__name__}")
-                await asyncio.sleep(delay=3)
+            except Exception:
+                raise
 
             finally:
                 if self.client.is_connected:
