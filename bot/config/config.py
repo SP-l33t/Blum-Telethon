@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     PLAY_GAMES: bool = True
     GAMES_PER_CYCLE: list[int] = [0, 20]
     LOCAL_PAYLOAD: bool = False
-    PAYLOAD_API_KEY: str = ""
     POINTS: list[int] = [190, 230]
 
     PERFORM_TASKS: bool = False

@@ -27,6 +27,7 @@ EARN = "https://earn-domain.blum.codes"
 
 GAME_ASSETS = ['BOMB', 'CLOVER', 'FREEZE']
 
+
 class Tapper:
     def __init__(self, tg_client: UniversalTelegramClient):
         self.tg_client = tg_client
@@ -51,8 +52,6 @@ class Tapper:
         self.user_data = None
         self.start_param = None
         self.blum_data = None
-
-        self.api_quota = 99999
 
         self._webview_data = None
 
@@ -276,8 +275,7 @@ class Tapper:
         return {}
 
     async def play_game(self, http_client: CloudflareScraper, play_passes):
-        api_key = settings.PAYLOAD_API_KEY
-        if not (settings.LOCAL_PAYLOAD or (api_key and ("pro" in api_key.lower() or "free" in api_key.lower()))):
+        if not settings.LOCAL_PAYLOAD:
             logger.warning(self.log_message("Node.js isn't installed and no valid API key found. Can't play games"))
             return
         try:
@@ -286,7 +284,7 @@ class Tapper:
             max_games = randint(settings.GAMES_PER_CYCLE[0], settings.GAMES_PER_CYCLE[1])
             # data_elig = await self.elig_dogs(http_client=http_client)
 
-            while play_passes and self.api_quota:
+            while play_passes:
                 if total_games >= max_games:
                     logger.info(self.log_message(f"Played {total_games}. Enough for now"))
                     return
@@ -359,36 +357,12 @@ class Tapper:
         async with aiohttp.request(url=url, method="GET") as response:
             self.blum_data = json.loads(await response.text())
 
-    async def create_payload(self, http_client: CloudflareScraper, game_id, points, dogs):
-        api_key = settings.PAYLOAD_API_KEY
-        payload_servers = self.blum_data.get('server', {}).get("pro", []) if "pro" in api_key.lower() else \
-            self.blum_data.get('server', {}).get("free", [])
-        available_servers = [item for item in payload_servers if item.get('status', 0) == 1]
-        shuffle(available_servers)
-        for server in available_servers:
-            resp = await http_client.post(f"{server['url']}blum/payload",
-                                          json={'game_id': game_id, 'points': points, 'dogs': dogs},
-                                          headers={"X-API-KEY": api_key})
-
-            if resp.status in range(200, 300):
-                data = (await resp.json()).get('data')
-                if data.get("remaining_quota"):
-                    self.api_quota = data.get("remaining_quota")
-                    logger.info(self.log_message(f"Remaining API Quota: {self.api_quota}"))
-                if data.get("payload"):
-                    return data.get("payload")
-            logger.warning(self.log_message(f"Failed to create payload from server {server['url']}"))
-        return None
-
     async def claim_game(self, game_id: str, http_client: CloudflareScraper):
         try:
             points = randint(settings.POINTS[0], settings.POINTS[1])
 
-            # if settings.LOCAL_PAYLOAD:
             freeze = randint(0, 5)
-            data = (await payload.create_payload_local(game_id=game_id, clover=points, freeze=freeze)).get('payload')
-            # else:
-            #     data = await self.create_payload(http_client=http_client, game_id=game_id, points=points, dogs=dogs)
+            data = await payload.create_payload_local(game_id=game_id, clover=points, freeze=freeze)
 
             if not data:
                 return None

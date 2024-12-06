@@ -7,7 +7,6 @@
 ## Recommendation before use
 
 # 🔥🔥 PYTHON version must be 3.10 🔥🔥
-# 🔥🔥 FOR LOCAL games Node.js 20+ is a MUST 🔥🔥
 
 > 🇷 🇺 README in russian available [here](README-RU.md)
 
@@ -35,7 +34,6 @@ _Script searches for session files in the following folders:_
 |    **TRACK_BOT_UPDATES**    |                                                                             Tracks bot updates and stops bot from running, if bot is updated (default: **True**)                                                                              |
 |       **PLAY_GAMES**        |                                                                                                  Play games or just start farming (**True**)                                                                                                  |
 |     **GAMES_PER_CYCLE**     |                                                                                                   Amount of games to play (**[min, max]**)                                                                                                    |
-|     **PAYLOAD_API_KEY**     |                                                                    API is a must, if you want the bot to play games (can purchase from https://zuy-web.vercel.app/blum/en)                                                                    |
 |         **POINTS**          |                                                                                         Points per game (default is [190, 230] ((That is, 190 to 230)                                                                                         |
 |   **SESSION_START_DELAY**   |                                                                                      Random start delay for sessions (From 1 to **X**. default is 360 )                                                                                       |
 |         **USE_REF**         |                                                                                             Register accounts with ur referral or not (**False**)                                                                                             |
@@ -120,4 +118,4 @@ You can also use arguments for quick start, for example:
 ```
 
 # Credits:
-Thanks to [sanjithacks](https://github.com/sanjithacks) for help with Blum payload encryption
+HUGE Thanks to [sanjithacks](https://github.com/sanjithacks) for help with Blum payload encryption ♥
