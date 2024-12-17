@@ -1,3 +1,5 @@
+import ssl
+
 import aiohttp
 import asyncio
 import json
@@ -24,6 +26,7 @@ SUBSCRIPTION = "https://subscription.blum.codes"
 TRIBE = "https://tribe-domain.blum.codes"
 USER = "https://user-domain.blum.codes"
 EARN = "https://earn-domain.blum.codes"
+MEMEPAD = "https://mempad-domain.blum.codes"
 
 GAME_ASSETS = ['BOMB', 'CLOVER', 'FREEZE']
 
@@ -39,9 +42,9 @@ class Tapper:
             logger.critical(self.log_message('CHECK accounts_config.json as it might be corrupted'))
             exit(-1)
 
-        self.headers = headers
+        self.headers = headers.copy()
         user_agent = session_config.get('user_agent')
-        self.headers['user-agent'] = user_agent
+        self.headers['User-Agent'] = user_agent
         self.headers.update(**get_sec_ch_ua(user_agent))
 
         self.proxy = session_config.get('proxy')
@@ -91,7 +94,9 @@ class Tapper:
 
                 resp = await http_client.post(
                     f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
-                if resp.status == 520:
+                if resp.status == 403:
+                    return None, None
+                elif resp.status == 520:
                     logger.warning(self.log_message('Relogin'))
                     await asyncio.sleep(delay=3)
                     continue
@@ -112,8 +117,7 @@ class Tapper:
                                      "referralToken": self.start_param.split('_')[1]}
 
                         resp = await http_client.post(
-                            f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP",
-                            json=json_data)
+                            f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
                         if resp.status == 520:
                             logger.warning(self.log_message('Relogin'))
                             await asyncio.sleep(delay=3)
@@ -127,9 +131,8 @@ class Tapper:
 
                         elif resp_json.get("message") == 'account is already connected to another user':
 
-                            json_data = {"query": initdata}
                             resp = await http_client.post(
-                                f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json=json_data)
+                                f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP", json={"query": initdata})
                             if resp.status == 520:
                                 logger.warning((self.log_message('Relogin')))
                                 await asyncio.sleep(delay=3)
@@ -146,10 +149,8 @@ class Tapper:
 
                 elif 'account is already connected to another user' in resp_json.get("message", "").lower():
 
-                    json_data = {"query": initdata}
-                    resp = await http_client.post(f"{USER}/api/v1/auth/provider"
-                                                  "/PROVIDER_TELEGRAM_MINI_APP",
-                                                  json=json_data)
+                    resp = await http_client.post(f"{USER}/api/v1/auth/provider/PROVIDER_TELEGRAM_MINI_APP",
+                                                  json={"query": initdata})
                     if resp.status == 520:
                         logger.warning(self.log_message('Relogin'))
                         await asyncio.sleep(delay=3)
@@ -167,6 +168,10 @@ class Tapper:
         except Exception as error:
             log_error(self.log_message(f"Login error {error}"))
             return None, None
+
+    async def user_me(self, http_client: CloudflareScraper):
+        response = await http_client.get(f"{USER}/api/v1/user/me")
+        return await response.json() if response.status in range(200, 300) else {}
 
     async def claim_task(self, http_client: CloudflareScraper, task_id):
         try:
@@ -275,9 +280,6 @@ class Tapper:
         return {}
 
     async def play_game(self, http_client: CloudflareScraper, play_passes):
-        if not settings.LOCAL_PAYLOAD:
-            logger.warning(self.log_message("Node.js isn't installed and no valid API key found. Can't play games"))
-            return
         try:
             total_games = 0
             tries = 3
@@ -502,8 +504,11 @@ class Tapper:
         access_token_created_time = 0
         init_data = None
 
-        proxy_conn = {'connector': ProxyConnector.from_url(self.proxy)} if self.proxy else {}
-        async with CloudflareScraper(headers=self.headers, timeout=aiohttp.ClientTimeout(60), **proxy_conn) as http_client:
+        ssl_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+        ssl_context.minimum_version = ssl.TLSVersion.TLSv1_3
+        proxy_conn = ProxyConnector.from_url(self.proxy, ssl=ssl_context) if self.proxy \
+            else aiohttp.TCPConnector(ssl_context=ssl_context)
+        async with CloudflareScraper(headers=self.headers, timeout=aiohttp.ClientTimeout(60), connector=proxy_conn) as http_client:
             while True:
                 if not await self.check_proxy(http_client=http_client):
                     logger.warning(self.log_message('Failed to connect to proxy server. Sleep 5 minutes.'))
@@ -529,10 +534,17 @@ class Tapper:
                             del http_client.headers["Authorization"]
 
                         access_token, refresh_token = await self.login(http_client=http_client, initdata=init_data)
+                        if not access_token:
+                            retry_in = uniform(120, 180)
+                            logger.error(self.log_message(f"Failed to login. Sleeping {int(retry_in)} seconds"))
+                            await asyncio.sleep(retry_in)
+                            continue
 
                         http_client.headers["Authorization"] = f"Bearer {access_token}"
 
-                        logger.success(self.log_message("Logged in successfully"))
+                        me = await self.user_me(http_client)
+
+                        logger.success(self.log_message(f"Logged in successfully as <ly>{me.get('username')}</ly>"))
 
                         if self.tg_client.is_fist_run:
                             await first_run.append_recurring_session(self.session_name)
