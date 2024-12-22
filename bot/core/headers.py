@@ -21,7 +21,6 @@ def get_sec_ch_ua(user_agent):
     match = re.search(pattern, user_agent)
 
     if match:
-        browser = match.group(1)
         version = match.group(2)
 
         return {'Sec-Ch-Ua': f'"Android WebView";v="{version}", "Chromium";v="{version}", "Not?A_Brand";v="24"'}

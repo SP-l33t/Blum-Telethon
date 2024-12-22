@@ -104,7 +104,6 @@ class Tapper:
                 resp_json = await resp.json()
 
                 if resp_json.get('token', {}).get('access'):
-                    logger.info(self.log_message(f"Logged in successfully as {self.user_data.get('username')}"))
                     return resp_json.get("token").get("access"), resp_json.get("token").get("refresh")
 
                 elif "username is not available" in resp_json.get("message", "").lower():
@@ -386,7 +385,7 @@ class Tapper:
             while True:
                 resp = await http_client.post(f"{GAME}/api/v1/farming/claim")
                 if resp.status not in [200, 201]:
-                    await asyncio.sleep(uniform(3, 5))
+                    await asyncio.sleep(uniform(2, 5))
                     continue
                 else:
                     break
@@ -466,16 +465,17 @@ class Tapper:
             log_error(self.log_message(f"Error occurred during balance: {e}"))
 
     async def claim_daily_reward(self, http_client: CloudflareScraper):
-        resp = await http_client.get(f"{GAME}/api/v1/daily-reward?offset=-180")
-        if resp.status in range(200, 300) and 'json' in resp.content_type:
-            reward = (await resp.json()).get('days', [{}])[-1].get('reward', {})
-            try:
-                resp = await http_client.post(f"{GAME}/api/v1/daily-reward?offset=-180")
-                txt = await resp.text()
-                await asyncio.sleep(uniform(1, 2))
-                return reward if txt == 'OK' else None
-            except Exception as e:
-                log_error(self.log_message(f"Error occurred during claim daily reward: {e}"))
+        try:
+            resp = await http_client.get(f"{GAME}/api/v2/daily-reward")
+            if resp.status in range(200, 300) and 'json' in resp.content_type:
+                is_avilable = (await resp.json()).get("claim", "unavailable")
+                if is_avilable:
+                    resp = await http_client.post(f"{GAME}/api/v2/daily-reward")
+                    resp_json = await resp.json()
+                    await asyncio.sleep(uniform(1, 2))
+                    return resp_json.get('claimedReward', {})
+        except Exception as e:
+            log_error(self.log_message(f"Error occurred during claim daily reward: {e}"))
 
     async def refresh_token(self, http_client: CloudflareScraper, token):
         if "Authorization" in http_client.headers:
@@ -489,6 +489,12 @@ class Tapper:
     @staticmethod
     async def get_time_now(http_client: CloudflareScraper):
         resp = await http_client.get(f"{GAME}/api/v1/time/now")
+        if 'json' in resp.content_type:
+            return await resp.json()
+
+    @staticmethod
+    async def get_jetton_partner(http_client: CloudflareScraper):
+        resp = await http_client.get(f"{MEMEPAD}/api/v1/jetton/partner")
         if 'json' in resp.content_type:
             return await resp.json()
 
@@ -571,10 +577,10 @@ class Tapper:
                         amount = await self.friend_claim(http_client=http_client)
                         logger.success(self.log_message(f"Claimed friend ref reward {amount}"))
 
+                    await self.join_tribe(http_client=http_client)
+
                     if play_passes and play_passes > 0 and settings.PLAY_GAMES:
                         await self.play_game(http_client=http_client, play_passes=play_passes)
-
-                    await self.join_tribe(http_client=http_client)
 
                     if settings.PERFORM_TASKS:
                         task_lists = await self.get_task_lists(http_client)
@@ -594,7 +600,7 @@ class Tapper:
                             if task.get('status') == "NOT_STARTED" and task.get('type') != "PROGRESS_TARGET" \
                                     and not task.get('isHidden') and task.get('id') in task_lists.get('wl'):
                                 task_started = await self.start_task(http_client, task["id"])
-                                await asyncio.sleep(uniform(1, 5))
+                                await asyncio.sleep(uniform(1, 10))
                                 if task_started.status in range(200, 300):
                                     logger.info(self.log_message(f"Started doing task - '{task['title']}'"))
                                     err_count = 0
@@ -602,7 +608,7 @@ class Tapper:
                                     logger.warning(self.log_message(f"Failed to start task '{task}'"))
                                     err_count += 1
 
-                        await asyncio.sleep(5)
+                        await asyncio.sleep(uniform(5, 15))
 
                         tasks = await self.get_tasks(http_client)
                         shuffle(tasks)
