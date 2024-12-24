@@ -7,7 +7,7 @@ import base64
 import json
 
 
-async def create_payload_local(game_id: str, clover, freeze, dogs=0):
+async def create_payload_local(game_id: str, clover, freeze, bombs=0, dogs=0):
     challenge = generate_challenge(game_id=game_id)
     game_data = {
         "version": 1.2,
@@ -16,9 +16,9 @@ async def create_payload_local(game_id: str, clover, freeze, dogs=0):
             "nonce": challenge["nonce"],
             "hash": challenge["hash"],
         },
-        "earnedPoints": {"BP": {"amount": clover}},
+        "earnedPoints": {"BP": {"amount": clover * 5 + bombs * 20}},
         "assetClicks": {
-            "BOMB": {"clicks": 0},
+            "BOMB": {"clicks": bombs},
             "CLOVER": {"clicks": clover},
             "FREEZE": {
                 "clicks": freeze

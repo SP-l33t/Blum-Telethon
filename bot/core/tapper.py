@@ -360,10 +360,12 @@ class Tapper:
 
     async def claim_game(self, game_id: str, http_client: CloudflareScraper):
         try:
-            points = randint(settings.POINTS[0], settings.POINTS[1])
+            clover = randint(settings.POINTS[0], settings.POINTS[1])
+            bombs = randint(5, 10)
+            points = clover * 5 + bombs * 20
 
             freeze = randint(0, 5)
-            data = await payload.create_payload_local(game_id=game_id, clover=points, freeze=freeze)
+            data = await payload.create_payload_local(game_id=game_id, clover=clover, freeze=freeze, bombs=bombs)
 
             if not data:
                 return None
