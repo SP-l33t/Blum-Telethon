@@ -16,7 +16,7 @@ async def create_payload_local(game_id: str, clover, freeze, bombs=0, dogs=0):
             "nonce": challenge["nonce"],
             "hash": challenge["hash"],
         },
-        "earnedPoints": {"BP": {"amount": clover * 5 - bombs * 100}},
+        "earnedPoints": {"BP": {"amount": clover * 3 - bombs * 100}},
         "assetClicks": {
             "BOMB": {"clicks": bombs},
             "CLOVER": {"clicks": clover},

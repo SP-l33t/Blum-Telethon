@@ -362,7 +362,7 @@ class Tapper:
         try:
             clover = randint(settings.POINTS[0], settings.POINTS[1])
             bombs = randint(0, 1)
-            points = clover * 5 - bombs * 100
+            points = clover * 3 - bombs * 100
 
             freeze = randint(0, 5)
             data = await payload.create_payload_local(game_id=game_id, clover=clover, freeze=freeze, bombs=bombs)
