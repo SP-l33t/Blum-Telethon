@@ -290,7 +290,7 @@ class Tapper:
                     logger.info(self.log_message(f"Played {total_games}. Enough for now"))
                     return
 
-                game_id = await self.start_game(http_client=http_client)
+                game_id, multiplier = await self.start_game(http_client=http_client)
 
                 if not game_id:
                     logger.info(self.log_message(
@@ -308,7 +308,7 @@ class Tapper:
                 #     dogs = randint(3, 25)
                 #     msg, points = await self.claim_game(game_id=game_id, http_client=http_client, dogs=dogs)
                 # else:
-                msg, points = await self.claim_game(game_id=game_id, http_client=http_client)
+                msg, points = await self.claim_game(http_client=http_client, game_id=game_id, multiplier=multiplier)
 
                 if isinstance(msg, bool) and msg:
                     logger.info(self.log_message(f"Finished playing game! Reward: <ly>{points}</ly>"))
@@ -332,7 +332,7 @@ class Tapper:
                     assets = response_data.get("assets")
                     if len(assets) != len(GAME_ASSETS) or [x for x in assets if x not in GAME_ASSETS]:
                         logger.warning(self.log_message('Game Structure has changed'))
-                    return response_data.get("gameId")
+                    return response_data.get("gameId"), int(float(response_data.get("assets", {}).get('CLOVER', {}).get('perClick', 1)))
 
             logger.error(self.log_message(f"Error occurred during start game: {resp.status}."))
             return None
@@ -358,11 +358,11 @@ class Tapper:
         async with aiohttp.request(url=url, method="GET") as response:
             self.blum_data = json.loads(await response.text())
 
-    async def claim_game(self, game_id: str, http_client: CloudflareScraper):
+    async def claim_game(self, http_client: CloudflareScraper, game_id: str, multiplier: int = 1):
         try:
             clover = randint(settings.POINTS[0], settings.POINTS[1])
-            bombs = randint(0, 1)
-            points = clover * 3 - bombs * 100
+            bombs = randint(0, 1) if multiplier >= 3 else 0
+            points = clover * multiplier - bombs * 100
 
             freeze = randint(0, 5)
             data = await payload.create_payload_local(game_id=game_id, clover=clover, freeze=freeze, bombs=bombs)
